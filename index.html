@@ -167,6 +167,24 @@
     color: var(--alerta);
     text-align: center;
   }
+
+  .item-historico {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--borda);
+  }
+  .item-historico:last-child { border-bottom: none; }
+  .historico-data { font-size: 0.75rem; color: var(--texto-fraco); }
+  .historico-detalhes { font-size: 0.8125rem; color: var(--texto-fraco); margin-top: 2px; }
+  .historico-valor {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--destaque);
+    font-variant-numeric: tabular-nums;
+  }
+  .historico-vazio { color: var(--texto-fraco); text-align: center; padding: 40px 0; font-size: 0.875rem; }
 </style>
 </head>
 <body>
@@ -175,9 +193,14 @@
 <div id="tela-medidor" class="tela ativa">
   <div class="cabecalho">
     <h1>Taxímetro</h1>
-    <button class="btn-engrenagem" onclick="abrirConfiguracoes()" aria-label="Configurações">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="6" x2="19" y2="6"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="12" x2="19" y2="12"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="18" x2="19" y2="18"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
-    </button>
+    <div style="display:flex; gap:4px;">
+      <button class="btn-engrenagem" onclick="abrirHistorico()" aria-label="Histórico de corridas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4.5L3 8"/><path d="M12 7v5l3 3"/></svg>
+      </button>
+      <button class="btn-engrenagem" onclick="abrirConfiguracoes()" aria-label="Configurações">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="6" x2="19" y2="6"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="12" x2="19" y2="12"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="18" x2="19" y2="18"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
   </div>
 
   <div id="status-linha" class="status-linha status-parado-app">Pronto pra iniciar</div>
@@ -236,6 +259,20 @@
     </div>
     <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
     <p id="config-msg" class="config-msg"></p>
+  </div>
+</div>
+
+<!-- ===================== TELA DE HISTÓRICO ===================== -->
+<div id="tela-historico" class="tela">
+  <div class="cabecalho">
+    <h1>Histórico de corridas</h1>
+    <button class="btn-engrenagem" onclick="fecharHistorico()" aria-label="Fechar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="config-corpo">
+    <div id="lista-historico"></div>
+    <button class="btn-secundario" onclick="limparHistorico()" style="margin-top:20px;">Apagar todo o histórico</button>
   </div>
 </div>
 
@@ -433,12 +470,81 @@ function finalizarCorrida() {
   }
   corridaAtiva = false;
 
+  if (estado.tempoTotalS > 0 || estado.valorTotal > 0) {
+    salvarNoHistorico({
+      data: new Date().toISOString(),
+      valor: estado.valorTotal,
+      distanciaKm: estado.distanciaTotalKm,
+      tempoS: estado.tempoTotalS
+    });
+  }
+
   document.getElementById('btn-principal').textContent = 'Iniciar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-iniciar';
   document.getElementById('btn-reiniciar').style.display = 'block';
   atualizarTela('Corrida finalizada', 'status-parado-app');
 
   salvarEstadoAtual();
+}
+
+// ===================== Histórico de corridas =====================
+const CHAVE_HISTORICO = 'taximetro_historico';
+
+function obterHistorico() {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_HISTORICO) || '[]');
+  } catch (e) { return []; }
+}
+
+function salvarNoHistorico(registro) {
+  const historico = obterHistorico();
+  historico.unshift(registro); // mais recente primeiro
+  try { localStorage.setItem(CHAVE_HISTORICO, JSON.stringify(historico)); } catch (e) {}
+}
+
+function formatarDataHistorico(isoString) {
+  const d = new Date(isoString);
+  const doisDig = (n) => String(n).padStart(2, '0');
+  return `${doisDig(d.getDate())}/${doisDig(d.getMonth() + 1)} às ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}`;
+}
+
+function renderizarHistorico() {
+  const historico = obterHistorico();
+  const container = document.getElementById('lista-historico');
+
+  if (!historico.length) {
+    container.innerHTML = '<p class="historico-vazio">Nenhuma corrida finalizada ainda.</p>';
+    return;
+  }
+
+  container.innerHTML = historico.map(function(item) {
+    return `
+      <div class="item-historico">
+        <div>
+          <div class="historico-data">${formatarDataHistorico(item.data)}</div>
+          <div class="historico-detalhes">${item.distanciaKm.toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS)}</div>
+        </div>
+        <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function abrirHistorico() {
+  renderizarHistorico();
+  document.getElementById('tela-medidor').classList.remove('ativa');
+  document.getElementById('tela-historico').classList.add('ativa');
+}
+
+function fecharHistorico() {
+  document.getElementById('tela-historico').classList.remove('ativa');
+  document.getElementById('tela-medidor').classList.add('ativa');
+}
+
+function limparHistorico() {
+  if (!confirm('Apagar TODO o histórico de corridas? Não dá pra desfazer.')) return;
+  localStorage.removeItem(CHAVE_HISTORICO);
+  renderizarHistorico();
 }
 
 function reiniciarCorrida() {
