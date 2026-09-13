@@ -359,6 +359,32 @@
     color: var(--destaque);
     font-variant-numeric: tabular-nums;
   }
+  .tela-licenca {
+    position: fixed; inset: 0; z-index: 300;
+    background: var(--bg);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px; overflow-y: auto;
+  }
+  .licenca-caixa {
+    background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 8px; padding: 22px; width: 100%; max-width: 420px;
+  }
+  .licenca-caixa h2 { font-size: 1.125rem; margin-bottom: 8px; }
+  .licenca-caixa p { font-size: 0.8125rem; color: var(--texto-fraco); line-height: 1.5; }
+  .licenca-codigo {
+    display: block; text-align: center; margin: 18px 0 10px;
+    font-size: 1.25rem; font-weight: 700; letter-spacing: 1px;
+    color: var(--destaque); word-break: break-all;
+    font-variant-numeric: tabular-nums;
+  }
+  .licenca-caixa textarea {
+    width: 100%; min-height: 90px; margin-top: 16px;
+    background: var(--bg); border: 1px solid var(--borda); color: var(--texto);
+    padding: 12px; border-radius: 4px; font-size: 0.8125rem;
+    font-family: inherit; resize: vertical; word-break: break-all;
+  }
+  .licenca-msg { text-align: center; font-size: 0.875rem; margin-top: 12px; min-height: 1.2em; }
+  .licenca-marca { text-align: center; font-size: 0.75rem; color: var(--texto-fraco); margin-top: 18px; }
   .tela-autorizacoes {
     position: fixed; inset: 0; z-index: 200;
     background: var(--bg);
@@ -681,6 +707,22 @@ function salvarAparenciaNoAparelho() {
 </div>
 
 <!-- ===================== MODAL DE FORMA DE PAGAMENTO ===================== -->
+<div id="tela-licenca" class="tela-licenca">
+  <div class="licenca-caixa">
+    <h2>Ativar o aplicativo</h2>
+    <p>Este aplicativo é licenciado para um aparelho só. Mande o código abaixo para quem te vendeu o app e receba a chave de ativação.</p>
+
+    <strong id="licenca-codigo" class="licenca-codigo">...</strong>
+    <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:12px;" onclick="copiarCodigoAparelho()">Copiar código do aparelho</button>
+
+    <textarea id="licenca-chave" placeholder="Cole aqui a chave de ativação que você recebeu" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <button class="config-salvar" type="button" style="margin-top:12px;" onclick="ativarLicenca()">Ativar</button>
+    <p id="licenca-msg" class="licenca-msg"></p>
+
+    <p class="licenca-marca">Fortaleza Digital Security</p>
+  </div>
+</div>
+
 <div id="tela-autorizacoes" class="tela-autorizacoes" style="display:none">
   <div class="autorizacoes-caixa">
     <h2>Duas autorizações do Android</h2>
@@ -1224,6 +1266,133 @@ function abrirNavegacao() {
       window.location.href = 'google.navigation:q=' + consulta + '&mode=d';
     }
   }, 2500);
+}
+
+// ===================== Licença (um aparelho por licença) =====================
+// Como funciona, em poucas palavras: cada celular gera um CÓDIGO DO
+// APARELHO, que sai do identificador do Android. O dono do app assina
+// esse código com a chave privada dele e devolve a CHAVE DE ATIVAÇÃO.
+// O app aqui só tem a chave PÚBLICA: ela confere a assinatura, mas não
+// consegue criar nenhuma. Ou seja, mesmo quem abrir o APK por dentro
+// não consegue fabricar chave pra outro celular — e o arquivo repassado
+// no WhatsApp instala, mas fica travado até ser ativado.
+const APP_ID = 'taximetro';
+const CHAVE_PUBLICA_LICENCA = {"kty":"EC","crv":"P-256","x":"yBHKjFLZZJzoY1l490yRD3ru9ROE03gS9C3XH0Gb0v4","y":"-sa1VYlT3Fvxhh9fJEaav3VO69vM5qiiJ3yE5io-AJw"};
+const CHAVE_LICENCA_SALVA = 'taximetro_licenca';
+const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem I, O, 0 e 1
+
+let codigoDoAparelho = '';
+
+function bytesParaCodigo(bytes) {
+  let bits = '';
+  for (let i = 0; i < bytes.length; i++) bits += bytes[i].toString(2).padStart(8, '0');
+  let texto = '';
+  for (let i = 0; i + 5 <= bits.length; i += 5) {
+    texto += ALFABETO_CODIGO[parseInt(bits.substr(i, 5), 2)];
+  }
+  return texto.replace(/(.{4})(?=.)/g, '$1-');
+}
+
+function base64urlParaBytes(texto) {
+  const limpo = texto.replace(/-/g, '+').replace(/_/g, '/');
+  const binario = atob(limpo + '==='.slice((limpo.length + 3) % 4));
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return bytes;
+}
+
+function idBrutoDoAparelho() {
+  const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+  if (plugins.Licenca) {
+    return plugins.Licenca.idDoAparelho().then(function(r) { return (r && r.id) || ''; });
+  }
+  return Promise.resolve('');
+}
+
+function calcularCodigoDoAparelho() {
+  return idBrutoDoAparelho().then(function(bruto) {
+    if (!bruto) return '';
+    const dados = new TextEncoder().encode(APP_ID + '|' + bruto);
+    return crypto.subtle.digest('SHA-256', dados).then(function(hash) {
+      return bytesParaCodigo(new Uint8Array(hash).slice(0, 10));
+    });
+  });
+}
+
+function conferirChaveDeAtivacao(codigo, chaveTexto) {
+  const limpa = String(chaveTexto || '').replace(/[^A-Za-z0-9_-]/g, '');
+  if (limpa.length < 80) return Promise.resolve(false);
+  let assinatura;
+  try { assinatura = base64urlParaBytes(limpa); } catch (e) { return Promise.resolve(false); }
+  return crypto.subtle.importKey('jwk', CHAVE_PUBLICA_LICENCA,
+      { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
+    .then(function(publica) {
+      return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publica,
+        assinatura, new TextEncoder().encode(APP_ID + ':' + codigo));
+    })
+    .catch(function() { return false; });
+}
+
+function copiarCodigoAparelho() {
+  const campo = document.createElement('textarea');
+  campo.value = codigoDoAparelho;
+  document.body.appendChild(campo);
+  campo.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(campo);
+  const msg = document.getElementById('licenca-msg');
+  msg.style.color = 'var(--destaque)';
+  msg.textContent = 'Código copiado. Mande no WhatsApp.';
+}
+
+function ativarLicenca() {
+  const msg = document.getElementById('licenca-msg');
+  const digitada = document.getElementById('licenca-chave').value;
+  msg.style.color = 'var(--texto-fraco)';
+  msg.textContent = 'Conferindo...';
+
+  conferirChaveDeAtivacao(codigoDoAparelho, digitada).then(function(valida) {
+    if (!valida) {
+      msg.style.color = 'var(--alerta)';
+      msg.textContent = 'Essa chave não serve neste aparelho. Confira se colou inteira.';
+      return;
+    }
+    try {
+      localStorage.setItem(CHAVE_LICENCA_SALVA, digitada.replace(/[^A-Za-z0-9_-]/g, ''));
+    } catch (e) {}
+    msg.style.color = 'var(--destaque)';
+    msg.textContent = 'Ativado! Bom trabalho.';
+    setTimeout(function() {
+      document.getElementById('tela-licenca').style.display = 'none';
+      mostrarAutorizacoesSePrimeiraVez();
+    }, 900);
+  });
+}
+
+// Confere a licença toda vez que o app abre. Como a chave é amarrada ao
+// código deste aparelho, copiar o conteúdo salvo pra outro celular não
+// adianta: lá o código é outro e a assinatura não bate.
+function conferirLicencaNaAbertura() {
+  if (!estaNoApp()) return; // site de teste no navegador roda livre
+  calcularCodigoDoAparelho().then(function(codigo) {
+    codigoDoAparelho = codigo;
+    const alvo = document.getElementById('licenca-codigo');
+    if (alvo) alvo.textContent = codigo || 'não identificado';
+
+    let salva = '';
+    try { salva = localStorage.getItem(CHAVE_LICENCA_SALVA) || ''; } catch (e) {}
+    if (!salva || !codigo) {
+      document.getElementById('tela-licenca').style.display = 'flex';
+      return;
+    }
+    conferirChaveDeAtivacao(codigo, salva).then(function(valida) {
+      if (valida) {
+        mostrarAutorizacoesSePrimeiraVez();
+      } else {
+        document.getElementById('tela-licenca').style.display = 'flex';
+      }
+    });
+  });
 }
 
 // ===================== Autorizações do Android =====================
@@ -1771,7 +1940,7 @@ document.getElementById('campo-destino').addEventListener('input', atualizarBota
 atualizarBotaoMaps();
 
 atualizarTela(null, null);
-mostrarAutorizacoesSePrimeiraVez();
+conferirLicencaNaAbertura();
 </script>
 </body>
 </html>

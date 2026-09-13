@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // O registro tem que vir ANTES do super.onCreate.
         registerPlugin(BateriaPlugin.class);
+        registerPlugin(LicencaPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
