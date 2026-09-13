@@ -2,5 +2,8 @@
 	"appId": "br.com.fortalezadigitalsecurity.taximetro",
 	"appName": "Taximetro",
 	"webDir": "www",
-	"bundledWebRuntime": false
+	"bundledWebRuntime": false,
+	"android": {
+		"useLegacyBridge": true
+	}
 }

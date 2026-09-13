@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Taxímetro</title>
+<script src="bg-geo-bundle.js"></script>
 <style>
   :root {
     --bg: #0A0E0C;
@@ -59,6 +60,19 @@
   .status-movimento { color: var(--destaque); }
   .status-esperando { color: var(--alerta); }
   .status-sem-gps { color: var(--perigo); }
+
+  .campo-trajeto { padding: 0 20px 10px; }
+  .campo-trajeto input {
+    width: 100%;
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    color: var(--texto);
+    padding: 10px 12px;
+    font-size: 0.8125rem;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .campo-trajeto input:focus { outline: none; border-color: var(--destaque); }
 
   /* ---------- Painel principal ---------- */
   .painel-principal {
@@ -210,6 +224,10 @@
 
   <div id="status-linha" class="status-linha status-parado-app">Pronto pra iniciar</div>
 
+  <div class="campo-trajeto">
+    <input type="text" id="campo-de-para" placeholder="De onde pra onde (opcional) — ex: Goiatuba → Itumbiara">
+  </div>
+
   <div id="aviso-gps" class="aviso-gps" style="display:none">
     Não consegui acessar sua localização. Verifique se o GPS está ligado e se o app tem permissão de localização.
   </div>
@@ -248,9 +266,23 @@
   </div>
   <div class="config-corpo">
     <div class="campo">
-      <label>Bandeirada (valor inicial fixo)</label>
-      <input type="number" id="cfg-bandeirada" inputmode="decimal" step="0.01" min="0">
-      <p class="campo-ajuda">Valor cobrado assim que a corrida começa, antes de andar ou esperar.</p>
+      <label>Bandeira 1 — bandeirada de dia</label>
+      <input type="number" id="cfg-bandeirada-dia" inputmode="decimal" step="0.01" min="0">
+      <p class="campo-ajuda">Valor inicial cobrado no horário de bandeira 1.</p>
+    </div>
+    <div class="campo">
+      <label>Bandeira 2 — bandeirada de noite</label>
+      <input type="number" id="cfg-bandeirada-noite" inputmode="decimal" step="0.01" min="0">
+      <p class="campo-ajuda">Valor inicial cobrado no horário de bandeira 2.</p>
+    </div>
+    <div class="campo">
+      <label>Bandeira 2 começa às (hora, 0-23)</label>
+      <input type="number" id="cfg-hora-inicio-noite" inputmode="numeric" step="1" min="0" max="23">
+    </div>
+    <div class="campo">
+      <label>Bandeira 2 termina às (hora, 0-23)</label>
+      <input type="number" id="cfg-hora-fim-noite" inputmode="numeric" step="1" min="0" max="23">
+      <p class="campo-ajuda">Ex: começa às 21 e termina às 5 — nesse intervalo (passando da meia-noite) vale a bandeira 2. Fora dele, bandeira 1.</p>
     </div>
     <div class="campo">
       <label>Valor por km rodado</label>
@@ -291,11 +323,24 @@ const CHAVE_CONFIG = 'taximetro_config';
 const CHAVE_ESTADO = 'taximetro_estado_corrida';
 
 const CONFIG_PADRAO = {
-  bandeirada: 5.00,
-  taxaKm: 3.20,
+  bandeiradaDia: 10.00,
+  bandeiradaNoite: 20.00,
+  horaInicioNoite: 21, // a partir dessa hora (0-23) já é bandeira 2
+  horaFimNoite: 5, // até essa hora (0-23) ainda é bandeira 2
+  taxaKm: 2.80,
   taxaEspera: 0.55, // por minuto parado
   limiarVelocidadeKmh: 5
 };
+
+function bandeiradaAtual() {
+  const hora = new Date().getHours();
+  const inicio = CONFIG.horaInicioNoite;
+  const fim = CONFIG.horaFimNoite;
+  const emHorarioNoturno = inicio > fim
+    ? (hora >= inicio || hora < fim)   // ex: 21h as 5h (passa da meia-noite)
+    : (hora >= inicio && hora < fim);  // caso nao vire o dia
+  return emHorarioNoturno ? CONFIG.bandeiradaNoite : CONFIG.bandeiradaDia;
+}
 
 function carregarConfiguracoes() {
   try {
@@ -309,19 +354,30 @@ function carregarConfiguracoes() {
 let CONFIG = carregarConfiguracoes();
 
 function preencherFormularioConfig() {
-  document.getElementById('cfg-bandeirada').value = CONFIG.bandeirada;
+  document.getElementById('cfg-bandeirada-dia').value = CONFIG.bandeiradaDia;
+  document.getElementById('cfg-bandeirada-noite').value = CONFIG.bandeiradaNoite;
+  document.getElementById('cfg-hora-inicio-noite').value = CONFIG.horaInicioNoite;
+  document.getElementById('cfg-hora-fim-noite').value = CONFIG.horaFimNoite;
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
 }
 
 function salvarConfiguracoes() {
-  const bandeirada = parseFloat(document.getElementById('cfg-bandeirada').value) || 0;
+  const bandeiradaDia = parseFloat(document.getElementById('cfg-bandeirada-dia').value) || 0;
+  const bandeiradaNoite = parseFloat(document.getElementById('cfg-bandeirada-noite').value) || 0;
+  const horaInicioNoite = parseInt(document.getElementById('cfg-hora-inicio-noite').value, 10);
+  const horaFimNoite = parseInt(document.getElementById('cfg-hora-fim-noite').value, 10);
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
 
-  CONFIG = { bandeirada, taxaKm, taxaEspera, limiarVelocidadeKmh };
+  CONFIG = {
+    bandeiradaDia, bandeiradaNoite,
+    horaInicioNoite: isNaN(horaInicioNoite) ? CONFIG_PADRAO.horaInicioNoite : horaInicioNoite,
+    horaFimNoite: isNaN(horaFimNoite) ? CONFIG_PADRAO.horaFimNoite : horaFimNoite,
+    taxaKm, taxaEspera, limiarVelocidadeKmh
+  };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
 
   const msg = document.getElementById('config-msg');
@@ -400,7 +456,7 @@ function processarNovaPosicao(pos) {
     const distanciaM = distanciaHaversineMetros(ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
     const tempoDecorridoS = (agoraMs - ultimaPosicao.tempoMs) / 1000;
 
-    if (tempoDecorridoS > 0 && tempoDecorridoS < 30) { // ignora saltos muito grandes de tempo (app em segundo plano, etc.)
+    if (tempoDecorridoS > 0 && tempoDecorridoS < 120) { // ignora saltos absurdos de tempo (celular desligado, app matado pelo sistema etc.) — 120s da margem pra atualizações em segundo plano, que naturalmente vêm mais espaçadas
       const velocidadeKmh = (distanciaM / 1000) / (tempoDecorridoS / 3600);
 
       estado.tempoTotalS += tempoDecorridoS;
@@ -448,8 +504,10 @@ function iniciarCorrida() {
     return;
   }
 
+  document.getElementById('campo-de-para').value = '';
+
   estado = {
-    valorTotal: CONFIG.bandeirada,
+    valorTotal: bandeiradaAtual(),
     distanciaTotalKm: 0,
     tempoTotalS: 0,
     ultimaAtualizacaoMs: Date.now()
@@ -459,11 +517,30 @@ function iniciarCorrida() {
 
   atualizarTela('Localizando...', 'status-parado-app');
 
-  watchId = navigator.geolocation.watchPosition(processarNovaPosicao, erroGps, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 15000
-  });
+  if (window.BackgroundGeolocationPlugin) {
+    // Dentro do app instalado: usa o plugin que continua funcionando
+    // com a tela desligada ou em outro aplicativo (mostra um aviso
+    // fixo na barra de notificações enquanto isso, exigido pelo
+    // próprio Android).
+    window.BackgroundGeolocationPlugin.addWatcher({
+      backgroundTitle: 'Taxímetro rodando',
+      backgroundMessage: 'Corrida em andamento — toque pra voltar ao app.',
+      requestPermissions: true,
+      stale: false,
+      distanceFilter: 0
+    }, function(location, erro) {
+      if (erro) { erroGps(erro); return; }
+      processarNovaPosicao({ coords: { latitude: location.latitude, longitude: location.longitude } });
+    }).then(function(id) { watchId = id; });
+  } else {
+    // Testando num navegador comum: usa a API padrão da web
+    // (só funciona com a tela do taxímetro aberta e visível)
+    watchId = navigator.geolocation.watchPosition(processarNovaPosicao, erroGps, {
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 15000
+    });
+  }
 
   document.getElementById('btn-principal').textContent = 'Finalizar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-finalizar';
@@ -488,7 +565,11 @@ function abrirGoogleMaps() {
 
 function finalizarCorrida() {
   if (watchId !== null) {
-    navigator.geolocation.clearWatch(watchId);
+    if (window.BackgroundGeolocationPlugin) {
+      window.BackgroundGeolocationPlugin.removeWatcher({ id: watchId });
+    } else {
+      navigator.geolocation.clearWatch(watchId);
+    }
     watchId = null;
   }
   corridaAtiva = false;
@@ -498,7 +579,8 @@ function finalizarCorrida() {
       data: new Date().toISOString(),
       valor: estado.valorTotal,
       distanciaKm: estado.distanciaTotalKm,
-      tempoS: estado.tempoTotalS
+      tempoS: estado.tempoTotalS,
+      trajeto: document.getElementById('campo-de-para').value.trim()
     });
   }
 
@@ -542,16 +624,24 @@ function renderizarHistorico() {
   }
 
   container.innerHTML = historico.map(function(item) {
+    const trajetoHtml = item.trajeto ? `<div class="historico-detalhes">${escapeHtmlTexto(item.trajeto)}</div>` : '';
     return `
       <div class="item-historico">
         <div>
           <div class="historico-data">${formatarDataHistorico(item.data)}</div>
+          ${trajetoHtml}
           <div class="historico-detalhes">${item.distanciaKm.toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS)}</div>
         </div>
         <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
       </div>
     `;
   }).join('');
+}
+
+function escapeHtmlTexto(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function abrirHistorico() {
