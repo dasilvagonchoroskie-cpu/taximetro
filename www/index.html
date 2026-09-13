@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Taxímetro</title>
+<style>
+  :root {
+    --bg: #0A0E0C;
+    --painel: #121712;
+    --borda: #2A342A;
+    --texto: #E8F0E8;
+    --texto-fraco: #7C8C7C;
+    --destaque: #4ADE80;
+    --alerta: #F59E0B;
+    --perigo: #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--texto);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+  .tela { display: none; min-height: 100vh; flex-direction: column; }
+  .tela.ativa { display: flex; }
+
+  /* ---------- Cabeçalho ---------- */
+  .cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--borda);
+  }
+  .cabecalho h1 { font-size: 1.125rem; font-weight: 600; }
+  .btn-engrenagem {
+    background: none;
+    border: none;
+    color: var(--texto-fraco);
+    cursor: pointer;
+    padding: 6px;
+  }
+  .btn-engrenagem svg { width: 24px; height: 24px; }
+
+  /* ---------- Status ---------- */
+  .status-linha {
+    text-align: center;
+    padding: 10px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .status-parado-app { color: var(--texto-fraco); }
+  .status-movimento { color: var(--destaque); }
+  .status-esperando { color: var(--alerta); }
+  .status-sem-gps { color: var(--perigo); }
+
+  /* ---------- Painel principal ---------- */
+  .painel-principal {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .valor-corrida {
+    font-size: clamp(3.2rem, 18vw, 5rem);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--destaque);
+    line-height: 1;
+    text-shadow: 0 0 24px rgba(74, 222, 128, 0.25);
+  }
+  .valor-corrida .cifrao { font-size: 0.5em; vertical-align: 12%; margin-right: 4px; color: var(--texto-fraco); }
+
+  .metricas {
+    display: flex;
+    gap: 40px;
+    margin-top: 32px;
+  }
+  .metrica { text-align: center; }
+  .metrica-valor {
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .metrica-rotulo {
+    font-size: 0.6875rem;
+    color: var(--texto-fraco);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+  }
+
+  /* ---------- Controles ---------- */
+  .controles { padding: 20px 20px calc(24px + env(safe-area-inset-bottom, 0)); }
+  .btn-grande {
+    width: 100%;
+    padding: 20px;
+    border: none;
+    font-size: 1.125rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .btn-iniciar { background: var(--destaque); color: #06280F; }
+  .btn-finalizar { background: var(--perigo); color: #2B0808; }
+  .btn-secundario {
+    width: 100%;
+    padding: 14px;
+    margin-top: 10px;
+    background: none;
+    border: 1px solid var(--borda);
+    color: var(--texto-fraco);
+    font-size: 0.9375rem;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+
+  /* ---------- Configurações ---------- */
+  .config-corpo { flex: 1; padding: 20px; overflow-y: auto; }
+  .campo { margin-bottom: 20px; }
+  .campo label {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--texto-fraco);
+    margin-bottom: 8px;
+  }
+  .campo input {
+    width: 100%;
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    color: var(--texto);
+    padding: 14px;
+    font-size: 1.125rem;
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .campo input:focus { outline: none; border-color: var(--destaque); }
+  .campo-ajuda { font-size: 0.75rem; color: var(--texto-fraco); margin-top: 6px; }
+  .config-salvar {
+    background: var(--destaque);
+    color: #06280F;
+    border: none;
+    width: 100%;
+    padding: 16px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .config-msg { text-align: center; color: var(--destaque); font-size: 0.875rem; margin-top: 12px; min-height: 1.2em; }
+
+  /* ---------- Aviso de permissão ---------- */
+  .aviso-gps {
+    margin: 20px;
+    padding: 16px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid var(--alerta);
+    border-radius: 4px;
+    font-size: 0.875rem;
+    color: var(--alerta);
+    text-align: center;
+  }
+
+  .item-historico {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--borda);
+  }
+  .item-historico:last-child { border-bottom: none; }
+  .historico-data { font-size: 0.75rem; color: var(--texto-fraco); }
+  .historico-detalhes { font-size: 0.8125rem; color: var(--texto-fraco); margin-top: 2px; }
+  .historico-valor {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--destaque);
+    font-variant-numeric: tabular-nums;
+  }
+  .historico-vazio { color: var(--texto-fraco); text-align: center; padding: 40px 0; font-size: 0.875rem; }
+</style>
+</head>
+<body>
+
+<!-- ===================== TELA DO TAXÍMETRO ===================== -->
+<div id="tela-medidor" class="tela ativa">
+  <div class="cabecalho">
+    <h1>Taxímetro</h1>
+    <div style="display:flex; gap:4px;">
+      <button class="btn-engrenagem" onclick="abrirHistorico()" aria-label="Histórico de corridas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4.5L3 8"/><path d="M12 7v5l3 3"/></svg>
+      </button>
+      <button class="btn-engrenagem" onclick="abrirConfiguracoes()" aria-label="Configurações">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="6" x2="19" y2="6"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="12" x2="19" y2="12"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="18" x2="19" y2="18"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="status-linha" class="status-linha status-parado-app">Pronto pra iniciar</div>
+
+  <div id="aviso-gps" class="aviso-gps" style="display:none">
+    Não consegui acessar sua localização. Verifique se o GPS está ligado e se o app tem permissão de localização.
+  </div>
+
+  <div class="painel-principal">
+    <div class="valor-corrida"><span class="cifrao">R$</span><span id="valor-total">0,00</span></div>
+    <div class="metricas">
+      <div class="metrica">
+        <div class="metrica-valor" id="valor-distancia">0,00 km</div>
+        <div class="metrica-rotulo">Distância</div>
+      </div>
+      <div class="metrica">
+        <div class="metrica-valor" id="valor-tempo">00:00</div>
+        <div class="metrica-rotulo">Tempo</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controles">
+    <button id="btn-principal" class="btn-grande btn-iniciar" onclick="alternarCorrida()">Iniciar corrida</button>
+    <button id="btn-reiniciar" class="btn-secundario" onclick="reiniciarCorrida()" style="display:none;">Zerar e começar outra corrida</button>
+  </div>
+</div>
+
+<!-- ===================== TELA DE CONFIGURAÇÕES ===================== -->
+<div id="tela-config" class="tela">
+  <div class="cabecalho">
+    <h1>Configurações</h1>
+    <button class="btn-engrenagem" onclick="fecharConfiguracoes()" aria-label="Fechar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="config-corpo">
+    <div class="campo">
+      <label>Bandeirada (valor inicial fixo)</label>
+      <input type="number" id="cfg-bandeirada" inputmode="decimal" step="0.01" min="0">
+      <p class="campo-ajuda">Valor cobrado assim que a corrida começa, antes de andar ou esperar.</p>
+    </div>
+    <div class="campo">
+      <label>Valor por km rodado</label>
+      <input type="number" id="cfg-taxa-km" inputmode="decimal" step="0.01" min="0">
+    </div>
+    <div class="campo">
+      <label>Valor por minuto parado/esperando</label>
+      <input type="number" id="cfg-taxa-espera" inputmode="decimal" step="0.01" min="0">
+      <p class="campo-ajuda">Cobrado enquanto o carro está parado ou em velocidade muito baixa (trânsito, semáforo, espera).</p>
+    </div>
+    <div class="campo">
+      <label>Velocidade mínima pra contar como "em movimento" (km/h)</label>
+      <input type="number" id="cfg-limiar-velocidade" inputmode="decimal" step="0.5" min="0">
+      <p class="campo-ajuda">Abaixo disso, conta como parado/esperando em vez de rodando.</p>
+    </div>
+    <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
+    <p id="config-msg" class="config-msg"></p>
+  </div>
+</div>
+
+<!-- ===================== TELA DE HISTÓRICO ===================== -->
+<div id="tela-historico" class="tela">
+  <div class="cabecalho">
+    <h1>Histórico de corridas</h1>
+    <button class="btn-engrenagem" onclick="fecharHistorico()" aria-label="Fechar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="config-corpo">
+    <div id="lista-historico"></div>
+    <button class="btn-secundario" onclick="limparHistorico()" style="margin-top:20px;">Apagar todo o histórico</button>
+  </div>
+</div>
+
+<script>
+// ===================== Configuração (guardada só no aparelho) =====================
+const CHAVE_CONFIG = 'taximetro_config';
+const CHAVE_ESTADO = 'taximetro_estado_corrida';
+
+const CONFIG_PADRAO = {
+  bandeirada: 5.00,
+  taxaKm: 3.20,
+  taxaEspera: 0.55, // por minuto parado
+  limiarVelocidadeKmh: 5
+};
+
+function carregarConfiguracoes() {
+  try {
+    const salvo = localStorage.getItem(CHAVE_CONFIG);
+    return salvo ? Object.assign({}, CONFIG_PADRAO, JSON.parse(salvo)) : Object.assign({}, CONFIG_PADRAO);
+  } catch (e) {
+    return Object.assign({}, CONFIG_PADRAO);
+  }
+}
+
+let CONFIG = carregarConfiguracoes();
+
+function preencherFormularioConfig() {
+  document.getElementById('cfg-bandeirada').value = CONFIG.bandeirada;
+  document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
+  document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
+  document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
+}
+
+function salvarConfiguracoes() {
+  const bandeirada = parseFloat(document.getElementById('cfg-bandeirada').value) || 0;
+  const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
+  const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
+  const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
+
+  CONFIG = { bandeirada, taxaKm, taxaEspera, limiarVelocidadeKmh };
+  localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
+
+  const msg = document.getElementById('config-msg');
+  msg.textContent = 'Salvo!';
+  setTimeout(() => { msg.textContent = ''; }, 2000);
+}
+
+function abrirConfiguracoes() {
+  preencherFormularioConfig();
+  document.getElementById('tela-medidor').classList.remove('ativa');
+  document.getElementById('tela-config').classList.add('ativa');
+}
+
+function fecharConfiguracoes() {
+  document.getElementById('tela-config').classList.remove('ativa');
+  document.getElementById('tela-medidor').classList.add('ativa');
+}
+
+// ===================== Cálculo de distância (fórmula de Haversine) =====================
+function distanciaHaversineMetros(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (g) => g * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Distância mínima (em metros) pra considerar como movimento real, não ruído do GPS parado
+const DISTANCIA_MINIMA_RUIDO_M = 3;
+
+// ===================== Estado da corrida =====================
+let corridaAtiva = false;
+let watchId = null;
+let ultimaPosicao = null; // { lat, lon, tempoMs }
+
+let estado = {
+  valorTotal: 0,
+  distanciaTotalKm: 0,
+  tempoTotalS: 0,
+  ultimaAtualizacaoMs: null
+};
+
+function formatarMoeda(valor) {
+  return valor.toFixed(2).replace('.', ',');
+}
+
+function formatarTempo(segundosTotais) {
+  const s = Math.floor(segundosTotais);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const seg = s % 60;
+  const doisDig = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${doisDig(h)}:${doisDig(m)}:${doisDig(seg)}` : `${doisDig(m)}:${doisDig(seg)}`;
+}
+
+function atualizarTela(statusTexto, statusClasse) {
+  document.getElementById('valor-total').textContent = formatarMoeda(estado.valorTotal);
+  document.getElementById('valor-distancia').textContent = estado.distanciaTotalKm.toFixed(2).replace('.', ',') + ' km';
+  document.getElementById('valor-tempo').textContent = formatarTempo(estado.tempoTotalS);
+
+  if (statusTexto) {
+    const linha = document.getElementById('status-linha');
+    linha.textContent = statusTexto;
+    linha.className = 'status-linha ' + statusClasse;
+  }
+}
+
+function processarNovaPosicao(pos) {
+  document.getElementById('aviso-gps').style.display = 'none';
+  const agoraMs = Date.now();
+  const { latitude, longitude } = pos.coords;
+
+  if (ultimaPosicao) {
+    const distanciaM = distanciaHaversineMetros(ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
+    const tempoDecorridoS = (agoraMs - ultimaPosicao.tempoMs) / 1000;
+
+    if (tempoDecorridoS > 0 && tempoDecorridoS < 30) { // ignora saltos muito grandes de tempo (app em segundo plano, etc.)
+      const velocidadeKmh = (distanciaM / 1000) / (tempoDecorridoS / 3600);
+
+      estado.tempoTotalS += tempoDecorridoS;
+
+      if (distanciaM >= DISTANCIA_MINIMA_RUIDO_M && velocidadeKmh >= CONFIG.limiarVelocidadeKmh) {
+        // em movimento de verdade
+        estado.distanciaTotalKm += distanciaM / 1000;
+        estado.valorTotal += (distanciaM / 1000) * CONFIG.taxaKm;
+        atualizarTela('Em movimento', 'status-movimento');
+      } else {
+        // parado ou movimento pequeno demais (ruído do GPS)
+        estado.valorTotal += (tempoDecorridoS / 60) * CONFIG.taxaEspera;
+        atualizarTela('Parado / esperando', 'status-esperando');
+      }
+
+      salvarEstadoAtual();
+    }
+  }
+
+  ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs };
+}
+
+function erroGps(erro) {
+  document.getElementById('aviso-gps').style.display = 'block';
+  atualizarTela('Sem sinal de GPS', 'status-sem-gps');
+}
+
+function salvarEstadoAtual() {
+  try {
+    localStorage.setItem(CHAVE_ESTADO, JSON.stringify({ estado, corridaAtiva }));
+  } catch (e) {}
+}
+
+function alternarCorrida() {
+  if (!corridaAtiva) {
+    iniciarCorrida();
+  } else {
+    finalizarCorrida();
+  }
+}
+
+function iniciarCorrida() {
+  if (!('geolocation' in navigator)) {
+    alert('Este aparelho não tem suporte a localização (GPS).');
+    return;
+  }
+
+  estado = {
+    valorTotal: CONFIG.bandeirada,
+    distanciaTotalKm: 0,
+    tempoTotalS: 0,
+    ultimaAtualizacaoMs: Date.now()
+  };
+  ultimaPosicao = null;
+  corridaAtiva = true;
+
+  atualizarTela('Localizando...', 'status-parado-app');
+
+  watchId = navigator.geolocation.watchPosition(processarNovaPosicao, erroGps, {
+    enableHighAccuracy: true,
+    maximumAge: 1000,
+    timeout: 15000
+  });
+
+  document.getElementById('btn-principal').textContent = 'Finalizar corrida';
+  document.getElementById('btn-principal').className = 'btn-grande btn-finalizar';
+  document.getElementById('btn-reiniciar').style.display = 'none';
+
+  salvarEstadoAtual();
+}
+
+function finalizarCorrida() {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  corridaAtiva = false;
+
+  if (estado.tempoTotalS > 0 || estado.valorTotal > 0) {
+    salvarNoHistorico({
+      data: new Date().toISOString(),
+      valor: estado.valorTotal,
+      distanciaKm: estado.distanciaTotalKm,
+      tempoS: estado.tempoTotalS
+    });
+  }
+
+  document.getElementById('btn-principal').textContent = 'Iniciar corrida';
+  document.getElementById('btn-principal').className = 'btn-grande btn-iniciar';
+  document.getElementById('btn-reiniciar').style.display = 'block';
+  atualizarTela('Corrida finalizada', 'status-parado-app');
+
+  salvarEstadoAtual();
+}
+
+// ===================== Histórico de corridas =====================
+const CHAVE_HISTORICO = 'taximetro_historico';
+
+function obterHistorico() {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_HISTORICO) || '[]');
+  } catch (e) { return []; }
+}
+
+function salvarNoHistorico(registro) {
+  const historico = obterHistorico();
+  historico.unshift(registro); // mais recente primeiro
+  try { localStorage.setItem(CHAVE_HISTORICO, JSON.stringify(historico)); } catch (e) {}
+}
+
+function formatarDataHistorico(isoString) {
+  const d = new Date(isoString);
+  const doisDig = (n) => String(n).padStart(2, '0');
+  return `${doisDig(d.getDate())}/${doisDig(d.getMonth() + 1)} às ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}`;
+}
+
+function renderizarHistorico() {
+  const historico = obterHistorico();
+  const container = document.getElementById('lista-historico');
+
+  if (!historico.length) {
+    container.innerHTML = '<p class="historico-vazio">Nenhuma corrida finalizada ainda.</p>';
+    return;
+  }
+
+  container.innerHTML = historico.map(function(item) {
+    return `
+      <div class="item-historico">
+        <div>
+          <div class="historico-data">${formatarDataHistorico(item.data)}</div>
+          <div class="historico-detalhes">${item.distanciaKm.toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS)}</div>
+        </div>
+        <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function abrirHistorico() {
+  renderizarHistorico();
+  document.getElementById('tela-medidor').classList.remove('ativa');
+  document.getElementById('tela-historico').classList.add('ativa');
+}
+
+function fecharHistorico() {
+  document.getElementById('tela-historico').classList.remove('ativa');
+  document.getElementById('tela-medidor').classList.add('ativa');
+}
+
+function limparHistorico() {
+  if (!confirm('Apagar TODO o histórico de corridas? Não dá pra desfazer.')) return;
+  localStorage.removeItem(CHAVE_HISTORICO);
+  renderizarHistorico();
+}
+
+function reiniciarCorrida() {
+  estado = { valorTotal: 0, distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
+  ultimaPosicao = null;
+  document.getElementById('btn-reiniciar').style.display = 'none';
+  atualizarTela('Pronto pra iniciar', 'status-parado-app');
+  salvarEstadoAtual();
+}
+
+// Restaura uma corrida em andamento se a página foi recarregada no meio dela
+(function restaurarEstado() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_ESTADO) || 'null');
+    if (salvo && salvo.corridaAtiva) {
+      estado = salvo.estado;
+      atualizarTela('Corrida em andamento', 'status-parado-app');
+      corridaAtiva = false; // exige tocar em "Iniciar" de novo pra recomeçar o GPS (mais seguro que retomar sozinho)
+      document.getElementById('btn-reiniciar').style.display = 'block';
+    } else if (salvo) {
+      estado = salvo.estado;
+      atualizarTela(null, null);
+      document.getElementById('btn-reiniciar').style.display = estado.valorTotal > 0 ? 'block' : 'none';
+    }
+  } catch (e) {}
+})();
+
+atualizarTela(null, null);
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+	"appId": "br.com.fortalezadigitalsecurity.taximetro",
+	"appName": "Taximetro",
+	"webDir": "www",
+	"bundledWebRuntime": false
+}
