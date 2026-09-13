@@ -92,6 +92,7 @@
   .fonte-opcoes { display: flex; gap: 10px; margin-bottom: 20px; }
   .fonte-opcao {
     flex: 1;
+    min-width: 0;
     background: none;
     border: 1px solid var(--borda);
     color: var(--texto-fraco);
@@ -129,7 +130,8 @@
   .pagamento-pergunta { color: var(--texto-fraco); font-size: 0.875rem; margin-bottom: 16px; }
   .pagamento-opcoes { display: flex; gap: 10px; }
   .pagamento-opcao {
-    flex: 1; padding: 16px 8px; background: var(--bg); border: 1px solid var(--borda);
+    flex: 1; min-width: 0; overflow-wrap: anywhere;
+    padding: 16px 5px; background: var(--bg); border: 1px solid var(--borda);
     color: var(--texto); font-size: 0.9375rem; font-weight: 600; border-radius: 4px; cursor: pointer;
   }
   .pagamento-opcao:hover { border-color: var(--destaque); }
@@ -228,10 +230,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: 20px 12px;
   }
   .valor-corrida {
-    font-size: clamp(3.2rem, 18vw, 5rem);
+    font-size: min(calc(18vw * var(--escala-fonte)), 78px);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--destaque);
@@ -364,7 +366,14 @@ var TEMAS = {
   'roxo-tech':        { bg: '#120A1A', texto: '#F0EAF5', destaque: '#9D6FE0' }
 };
 var TEMA_PADRAO = 'verde-seguranca';
+// O tamanho original do app agora e o "Pequeno". Medio e Grande sao
+// dois degraus acima dele.
+var FONTES = ['1', '1.2', '1.4'];
 var FONTE_PADRAO = '1';
+// Quem ja tinha escolhido um tamanho na versao anterior nao fica com
+// um valor orfao: 0.9 (antigo pequeno) e 1 viram o novo Pequeno, e
+// 1.15 (antigo grande) vira o novo Medio.
+var FONTE_ANTIGA = { '0.9': '1', '1.15': '1.2' };
 var CHAVE_APARENCIA = 'taximetro_aparencia';
 
 var temaSelecionado = TEMA_PADRAO;
@@ -424,7 +433,10 @@ function salvarAparenciaNoAparelho() {
   try {
     var salvo = JSON.parse(localStorage.getItem(CHAVE_APARENCIA) || 'null');
     if (salvo && TEMAS[salvo.tema]) temaSelecionado = salvo.tema;
-    if (salvo && salvo.fonte) fonteSelecionada = salvo.fonte;
+    if (salvo && salvo.fonte) {
+      const convertida = FONTE_ANTIGA[salvo.fonte] || salvo.fonte;
+      fonteSelecionada = FONTES.indexOf(convertida) !== -1 ? convertida : FONTE_PADRAO;
+    }
   } catch (e) {}
   aplicarTemaVisual(temaSelecionado);
   aplicarEscalaFonte(fonteSelecionada);
@@ -528,9 +540,9 @@ function salvarAparenciaNoAparelho() {
 
       <label>Tamanho do texto</label>
       <div class="fonte-opcoes" id="fonte-opcoes">
-        <button type="button" class="fonte-opcao" data-fonte-btn="0.9" onclick="escolherFonte('0.9')">Pequeno</button>
-        <button type="button" class="fonte-opcao" data-fonte-btn="1" onclick="escolherFonte('1')">Médio</button>
-        <button type="button" class="fonte-opcao" data-fonte-btn="1.15" onclick="escolherFonte('1.15')">Grande</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1" onclick="escolherFonte('1')">Pequeno</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1.2" onclick="escolherFonte('1.2')">Médio</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1.4" onclick="escolherFonte('1.4')">Grande</button>
       </div>
 
       <button class="aparencia-salvar" onclick="salvarAparencia()">Salvar aparência</button>
