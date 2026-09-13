@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Taxímetro</title>
 <script src="bg-geo-bundle.js"></script>
+<script src="libs-bundle.js"></script>
 <style>
   :root {
     --bg: #0A0E0C;
@@ -15,6 +16,15 @@
     --destaque: #4ADE80;
     --alerta: #F59E0B;
     --perigo: #EF4444;
+  }
+  html[data-tema="ambar"] {
+    --bg: #0E0B08; --painel: #171310; --borda: #342A20; --destaque: #F5A623;
+  }
+  html[data-tema="azul"] {
+    --bg: #080E12; --painel: #10171C; --borda: #20323A; --destaque: #38BDF8;
+  }
+  html[data-tema="vermelho"] {
+    --bg: #120909; --painel: #1A1111; --borda: #3A2323; --destaque: #F87171;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -38,6 +48,70 @@
   }
   .cabecalho h1 { font-size: 1.125rem; font-weight: 600; }
   .marca-app { font-size: 0.6875rem; color: var(--texto-fraco); margin-top: 2px; letter-spacing: 0.02em; }
+
+  .tema-swatches { display: flex; gap: 12px; }
+  .tema-swatch {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: var(--cor-swatch);
+    cursor: pointer;
+    padding: 0;
+  }
+  .tema-swatch[data-ativo="true"] { border-color: var(--texto); }
+
+  .pagamento-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .pagamento-modal-inner {
+    background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 8px; padding: 24px; width: 100%; max-width: 360px;
+    text-align: center;
+  }
+  .pagamento-valor { font-size: 2rem; font-weight: 700; color: var(--destaque); margin: 12px 0; font-variant-numeric: tabular-nums; }
+  .pagamento-pergunta { color: var(--texto-fraco); font-size: 0.875rem; margin-bottom: 16px; }
+  .pagamento-opcoes { display: flex; gap: 10px; }
+  .pagamento-opcao {
+    flex: 1; padding: 16px 8px; background: var(--bg); border: 1px solid var(--borda);
+    color: var(--texto); font-size: 0.9375rem; font-weight: 600; border-radius: 4px; cursor: pointer;
+  }
+  .pagamento-opcao:hover { border-color: var(--destaque); }
+  .pix-qrcode-taxi { display: flex; justify-content: center; margin: 16px 0; }
+  .pix-codigo-texto-taxi {
+    width: 100%; background: var(--bg); border: 1px solid var(--borda); color: var(--texto);
+    padding: 10px; font-size: 0.6875rem; font-family: monospace; min-height: 60px; resize: none; margin-bottom: 10px;
+  }
+  .admin-btn {
+    width: 100%; padding: 12px; background: none; border: 1px solid var(--destaque);
+    color: var(--destaque); font-size: 0.875rem; font-weight: 600; border-radius: 4px; cursor: pointer;
+  }
+
+  .filtro-periodo { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filtro-btn {
+    background: none; border: 1px solid var(--borda); color: var(--texto-fraco);
+    padding: 8px 12px; font-size: 0.75rem; border-radius: 20px; cursor: pointer;
+  }
+  .filtro-btn[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .filtro-personalizado { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filtro-personalizado input {
+    background: var(--painel); border: 1px solid var(--borda); color: var(--texto);
+    padding: 8px; border-radius: 4px; font-size: 0.8125rem;
+  }
+  .filtro-personalizado span { color: var(--texto-fraco); font-size: 0.8125rem; }
+  .filtro-personalizado .admin-btn { width: auto; padding: 8px 14px; }
+  .historico-resumo {
+    background: var(--bg); border: 1px solid var(--borda); border-radius: 4px;
+    padding: 12px; margin-bottom: 14px; font-size: 0.8125rem; color: var(--texto-fraco);
+    display: flex; justify-content: space-between;
+  }
+  .historico-resumo strong { color: var(--destaque); font-size: 1rem; }
+  .historico-forma {
+    display: inline-block; font-size: 0.6875rem; padding: 2px 8px; border-radius: 10px;
+    background: var(--bg); border: 1px solid var(--borda); color: var(--texto-fraco); margin-top: 4px;
+  }
   .btn-engrenagem {
     background: none;
     border: none;
@@ -204,6 +278,12 @@
 </style>
 </head>
 <body>
+<script>
+  try {
+    const temaSalvo = localStorage.getItem('taximetro_tema');
+    if (temaSalvo && temaSalvo !== 'verde') document.documentElement.setAttribute('data-tema', temaSalvo);
+  } catch (e) {}
+</script>
 
 <!-- ===================== TELA DO TAXÍMETRO ===================== -->
 <div id="tela-medidor" class="tela ativa">
@@ -266,6 +346,15 @@
   </div>
   <div class="config-corpo">
     <div class="campo">
+      <label>Cor do painel</label>
+      <div class="tema-swatches">
+        <button type="button" class="tema-swatch" data-tema-btn="verde" style="--cor-swatch:#4ADE80" onclick="aplicarTema('verde')" aria-label="Verde"></button>
+        <button type="button" class="tema-swatch" data-tema-btn="ambar" style="--cor-swatch:#F5A623" onclick="aplicarTema('ambar')" aria-label="Âmbar"></button>
+        <button type="button" class="tema-swatch" data-tema-btn="azul" style="--cor-swatch:#38BDF8" onclick="aplicarTema('azul')" aria-label="Azul"></button>
+        <button type="button" class="tema-swatch" data-tema-btn="vermelho" style="--cor-swatch:#F87171" onclick="aplicarTema('vermelho')" aria-label="Vermelho"></button>
+      </div>
+    </div>
+    <div class="campo">
       <label>Bandeira 1 — bandeirada de dia</label>
       <input type="number" id="cfg-bandeirada-dia" inputmode="decimal" step="0.01" min="0">
       <p class="campo-ajuda">Valor inicial cobrado no horário de bandeira 1.</p>
@@ -282,7 +371,12 @@
     <div class="campo">
       <label>Bandeira 2 termina às (hora, 0-23)</label>
       <input type="number" id="cfg-hora-fim-noite" inputmode="numeric" step="1" min="0" max="23">
-      <p class="campo-ajuda">Ex: começa às 21 e termina às 5 — nesse intervalo (passando da meia-noite) vale a bandeira 2. Fora dele, bandeira 1.</p>
+      <p class="campo-ajuda">Ex: começa às 22 e termina às 6 — nesse intervalo (passando da meia-noite) vale a bandeira 2. Fora dele, bandeira 1. Funciona certo independente do celular mostrar hora em formato 12h ou 24h.</p>
+    </div>
+    <div class="campo">
+      <label>Km incluídos na bandeirada (não cobra por km até aqui)</label>
+      <input type="number" id="cfg-km-incluido" inputmode="decimal" step="0.1" min="0">
+      <p class="campo-ajuda">Só começa a cobrar valor por km rodado depois de passar dessa distância. Coloque 0 pra cobrar por km desde o início.</p>
     </div>
     <div class="campo">
       <label>Valor por km rodado</label>
@@ -298,6 +392,10 @@
       <input type="number" id="cfg-limiar-velocidade" inputmode="decimal" step="0.5" min="0">
       <p class="campo-ajuda">Abaixo disso, conta como parado/esperando em vez de rodando.</p>
     </div>
+    <div class="campo">
+      <label>Chave Pix (pra receber pagamento)</label>
+      <input type="text" id="cfg-chave-pix" placeholder="Telefone, e-mail, CPF ou chave aleatória">
+    </div>
     <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
     <p id="config-msg" class="config-msg"></p>
   </div>
@@ -312,8 +410,43 @@
     </button>
   </div>
   <div class="config-corpo">
+    <div class="filtro-periodo">
+      <button type="button" class="filtro-btn" data-filtro-btn="7" onclick="aplicarFiltroPeriodo('7')">7 dias</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="15" onclick="aplicarFiltroPeriodo('15')">15 dias</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="mes" onclick="aplicarFiltroPeriodo('mes')">Mês</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="tudo" onclick="aplicarFiltroPeriodo('tudo')">Tudo</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="personalizado" onclick="aplicarFiltroPeriodo('personalizado')">Período</button>
+    </div>
+    <div id="filtro-personalizado-campos" class="filtro-personalizado" style="display:none">
+      <input type="date" id="filtro-data-de">
+      <span>até</span>
+      <input type="date" id="filtro-data-ate">
+      <button type="button" class="admin-btn" onclick="aplicarFiltroPeriodo('personalizado')">OK</button>
+    </div>
+    <div id="historico-resumo" class="historico-resumo"></div>
     <div id="lista-historico"></div>
-    <button class="btn-secundario" onclick="limparHistorico()" style="margin-top:20px;">Apagar todo o histórico</button>
+    <button class="btn-secundario" onclick="exportarHistoricoPdf()" style="margin-top:14px;">Exportar PDF do período</button>
+    <button class="btn-secundario" onclick="limparHistorico()" style="margin-top:10px;">Apagar todo o histórico</button>
+  </div>
+</div>
+
+<!-- ===================== MODAL DE FORMA DE PAGAMENTO ===================== -->
+<div id="modal-pagamento" class="pagamento-modal" style="display:none">
+  <div class="pagamento-modal-inner">
+    <h3>Corrida finalizada</h3>
+    <div class="pagamento-valor" id="pagamento-valor">R$ 0,00</div>
+    <p class="pagamento-pergunta">Como o cliente vai pagar?</p>
+    <div class="pagamento-opcoes">
+      <button type="button" class="pagamento-opcao" onclick="escolherPagamento('dinheiro')">Dinheiro</button>
+      <button type="button" class="pagamento-opcao" onclick="escolherPagamento('cartao')">Cartão</button>
+      <button type="button" class="pagamento-opcao" onclick="escolherPagamento('pix')">Pix</button>
+    </div>
+    <div id="pagamento-pix-area" style="display:none">
+      <div id="pix-qrcode-taxi" class="pix-qrcode-taxi"></div>
+      <textarea id="pagamento-pix-codigo" class="pix-codigo-texto-taxi" readonly></textarea>
+      <button class="admin-btn" type="button" onclick="copiarCodigoPixTaxi()">Copiar código Pix</button>
+      <button class="config-salvar" type="button" style="margin-top:10px;" onclick="concluirFinalizacao('pix')">Pagamento recebido — concluir</button>
+    </div>
   </div>
 </div>
 
@@ -325,8 +458,9 @@ const CHAVE_ESTADO = 'taximetro_estado_corrida';
 const CONFIG_PADRAO = {
   bandeiradaDia: 10.00,
   bandeiradaNoite: 20.00,
-  horaInicioNoite: 21, // a partir dessa hora (0-23) já é bandeira 2
-  horaFimNoite: 5, // até essa hora (0-23) ainda é bandeira 2
+  horaInicioNoite: 22, // a partir dessa hora (0-23) já é bandeira 2
+  horaFimNoite: 6, // até essa hora (0-23) ainda é bandeira 2
+  kmIncluidoNaBandeirada: 1.5, // primeiros X km não cobram valor por km, só depois disso
   taxaKm: 2.80,
   taxaEspera: 0.55, // por minuto parado
   limiarVelocidadeKmh: 5
@@ -358,9 +492,11 @@ function preencherFormularioConfig() {
   document.getElementById('cfg-bandeirada-noite').value = CONFIG.bandeiradaNoite;
   document.getElementById('cfg-hora-inicio-noite').value = CONFIG.horaInicioNoite;
   document.getElementById('cfg-hora-fim-noite').value = CONFIG.horaFimNoite;
+  document.getElementById('cfg-km-incluido').value = CONFIG.kmIncluidoNaBandeirada;
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
+  document.getElementById('cfg-chave-pix').value = CONFIG.chavePix || '';
 }
 
 function salvarConfiguracoes() {
@@ -368,15 +504,18 @@ function salvarConfiguracoes() {
   const bandeiradaNoite = parseFloat(document.getElementById('cfg-bandeirada-noite').value) || 0;
   const horaInicioNoite = parseInt(document.getElementById('cfg-hora-inicio-noite').value, 10);
   const horaFimNoite = parseInt(document.getElementById('cfg-hora-fim-noite').value, 10);
+  const kmIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-km-incluido').value);
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
+  const chavePix = document.getElementById('cfg-chave-pix').value.trim();
 
   CONFIG = {
     bandeiradaDia, bandeiradaNoite,
     horaInicioNoite: isNaN(horaInicioNoite) ? CONFIG_PADRAO.horaInicioNoite : horaInicioNoite,
     horaFimNoite: isNaN(horaFimNoite) ? CONFIG_PADRAO.horaFimNoite : horaFimNoite,
-    taxaKm, taxaEspera, limiarVelocidadeKmh
+    kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
+    taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix
   };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
 
@@ -387,8 +526,26 @@ function salvarConfiguracoes() {
 
 function abrirConfiguracoes() {
   preencherFormularioConfig();
+  marcarTemaAtivo();
   document.getElementById('tela-medidor').classList.remove('ativa');
   document.getElementById('tela-config').classList.add('ativa');
+}
+
+function marcarTemaAtivo() {
+  const temaAtual = localStorage.getItem('taximetro_tema') || 'verde';
+  document.querySelectorAll('.tema-swatch').forEach(function(btn) {
+    btn.setAttribute('data-ativo', btn.getAttribute('data-tema-btn') === temaAtual ? 'true' : 'false');
+  });
+}
+
+function aplicarTema(nome) {
+  if (nome === 'verde') {
+    document.documentElement.removeAttribute('data-tema');
+  } else {
+    document.documentElement.setAttribute('data-tema', nome);
+  }
+  try { localStorage.setItem('taximetro_tema', nome); } catch (e) {}
+  marcarTemaAtivo();
 }
 
 function fecharConfiguracoes() {
@@ -409,6 +566,38 @@ function distanciaHaversineMetros(lat1, lon1, lat2, lon2) {
 
 // Distância mínima (em metros) pra considerar como movimento real, não ruído do GPS parado
 const DISTANCIA_MINIMA_RUIDO_M = 3;
+
+// ===================== Pix (payload EMV / BR Code) =====================
+function crc16Pix(payload) {
+  let resultado = 0xFFFF;
+  for (let i = 0; i < payload.length; i++) {
+    resultado ^= (payload.charCodeAt(i) << 8);
+    for (let j = 0; j < 8; j++) {
+      resultado = (resultado & 0x8000) ? ((resultado << 1) ^ 0x1021) & 0xFFFF : (resultado << 1) & 0xFFFF;
+    }
+  }
+  return resultado.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function campoPix(id, valor) {
+  return id + String(valor.length).padStart(2, '0') + valor;
+}
+
+function gerarPayloadPix(chave, valor, nome, cidade) {
+  const contaMerchant = campoPix('00', 'br.gov.bcb.pix') + campoPix('01', chave);
+  let payload =
+    campoPix('00', '01') +
+    campoPix('26', contaMerchant) +
+    campoPix('52', '0000') +
+    campoPix('53', '986') +
+    campoPix('54', valor.toFixed(2)) +
+    campoPix('58', 'BR') +
+    campoPix('59', nome.substring(0, 25)) +
+    campoPix('60', cidade.substring(0, 15)) +
+    campoPix('62', campoPix('05', '***'));
+  payload += '6304';
+  return payload + crc16Pix(payload);
+}
 
 // ===================== Estado da corrida =====================
 let corridaAtiva = false;
@@ -463,8 +652,16 @@ function processarNovaPosicao(pos) {
 
       if (distanciaM >= DISTANCIA_MINIMA_RUIDO_M && velocidadeKmh >= CONFIG.limiarVelocidadeKmh) {
         // em movimento de verdade
-        estado.distanciaTotalKm += distanciaM / 1000;
-        estado.valorTotal += (distanciaM / 1000) * CONFIG.taxaKm;
+        const distanciaKmEsseTrecho = distanciaM / 1000;
+        const distanciaAntesDesseTrecho = estado.distanciaTotalKm;
+        estado.distanciaTotalKm += distanciaKmEsseTrecho;
+
+        // só cobra a partir do km configurado como "incluído na bandeirada" —
+        // calcula certo mesmo quando um único trecho cruza essa marca no meio
+        const kmIncluido = CONFIG.kmIncluidoNaBandeirada || 0;
+        const kmCobravelNesseTrecho = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntesDesseTrecho));
+        estado.valorTotal += kmCobravelNesseTrecho * CONFIG.taxaKm;
+
         atualizarTela('Em movimento', 'status-movimento');
       } else {
         // parado ou movimento pequeno demais (ruído do GPS)
@@ -575,12 +772,55 @@ function finalizarCorrida() {
   corridaAtiva = false;
 
   if (estado.tempoTotalS > 0 || estado.valorTotal > 0) {
+    abrirModalPagamento();
+  } else {
+    concluirFinalizacao(null);
+  }
+}
+
+function abrirModalPagamento() {
+  document.getElementById('pagamento-valor').textContent = 'R$ ' + formatarMoeda(estado.valorTotal);
+  document.getElementById('pagamento-pix-area').style.display = 'none';
+  document.getElementById('modal-pagamento').style.display = 'flex';
+}
+
+function escolherPagamento(forma) {
+  if (forma === 'pix') {
+    if (!CONFIG.chavePix) {
+      alert('Cadastre sua chave Pix nas configurações antes de usar essa opção.');
+      return;
+    }
+    const payload = gerarPayloadPix(CONFIG.chavePix, estado.valorTotal, 'TAXIMETRO', 'BRASIL');
+    document.getElementById('pagamento-pix-area').style.display = 'block';
+    document.getElementById('pagamento-pix-codigo').value = payload;
+    document.getElementById('pix-qrcode-taxi').innerHTML = '';
+    if (window.QRCodeLib) {
+      window.QRCodeLib.toCanvas(document.createElement('canvas'), payload, { width: 220 }, function(err, canvas) {
+        if (!err) document.getElementById('pix-qrcode-taxi').appendChild(canvas);
+      });
+    }
+  } else {
+    concluirFinalizacao(forma);
+  }
+}
+
+function copiarCodigoPixTaxi() {
+  const campo = document.getElementById('pagamento-pix-codigo');
+  campo.select();
+  document.execCommand('copy');
+}
+
+function concluirFinalizacao(formaPagamento) {
+  document.getElementById('modal-pagamento').style.display = 'none';
+
+  if (estado.tempoTotalS > 0 || estado.valorTotal > 0) {
     salvarNoHistorico({
       data: new Date().toISOString(),
       valor: estado.valorTotal,
       distanciaKm: estado.distanciaTotalKm,
       tempoS: estado.tempoTotalS,
-      trajeto: document.getElementById('campo-de-para').value.trim()
+      trajeto: document.getElementById('campo-de-para').value.trim(),
+      formaPagamento: formaPagamento
     });
   }
 
@@ -614,28 +854,127 @@ function formatarDataHistorico(isoString) {
   return `${doisDig(d.getDate())}/${doisDig(d.getMonth() + 1)} às ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}`;
 }
 
-function renderizarHistorico() {
+const ROTULO_PAGAMENTO = { dinheiro: 'Dinheiro', cartao: 'Cartão', pix: 'Pix' };
+
+let filtroPeriodoAtual = 'tudo';
+
+function inicioDoDia(data) {
+  const d = new Date(data);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function historicoFiltrado() {
   const historico = obterHistorico();
+  if (filtroPeriodoAtual === 'tudo') return historico;
+
+  const agora = new Date();
+  let limiteInicio = null;
+  let limiteFim = null;
+
+  if (filtroPeriodoAtual === '7' || filtroPeriodoAtual === '15') {
+    const dias = parseInt(filtroPeriodoAtual, 10);
+    limiteInicio = inicioDoDia(new Date(agora.getTime() - dias * 24 * 60 * 60 * 1000));
+  } else if (filtroPeriodoAtual === 'mes') {
+    limiteInicio = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  } else if (filtroPeriodoAtual === 'personalizado') {
+    const de = document.getElementById('filtro-data-de').value;
+    const ate = document.getElementById('filtro-data-ate').value;
+    if (de) limiteInicio = new Date(de + 'T00:00:00');
+    if (ate) limiteFim = new Date(ate + 'T23:59:59');
+  }
+
+  return historico.filter(function(item) {
+    const dataItem = new Date(item.data);
+    if (limiteInicio && dataItem < limiteInicio) return false;
+    if (limiteFim && dataItem > limiteFim) return false;
+    return true;
+  });
+}
+
+function aplicarFiltroPeriodo(nome) {
+  filtroPeriodoAtual = nome;
+  document.querySelectorAll('.filtro-btn').forEach(function(btn) {
+    btn.setAttribute('data-ativo', btn.getAttribute('data-filtro-btn') === nome ? 'true' : 'false');
+  });
+  document.getElementById('filtro-personalizado-campos').style.display = nome === 'personalizado' ? 'flex' : 'none';
+  renderizarHistorico();
+}
+
+function renderizarHistorico() {
+  const historico = historicoFiltrado();
   const container = document.getElementById('lista-historico');
+  const resumo = document.getElementById('historico-resumo');
+
+  const totalValor = historico.reduce(function(soma, item) { return soma + item.valor; }, 0);
+  resumo.innerHTML = `<span>${historico.length} corrida${historico.length === 1 ? '' : 's'}</span><strong>R$ ${formatarMoeda(totalValor)}</strong>`;
 
   if (!historico.length) {
-    container.innerHTML = '<p class="historico-vazio">Nenhuma corrida finalizada ainda.</p>';
+    container.innerHTML = '<p class="historico-vazio">Nenhuma corrida nesse período.</p>';
     return;
   }
 
   container.innerHTML = historico.map(function(item) {
     const trajetoHtml = item.trajeto ? `<div class="historico-detalhes">${escapeHtmlTexto(item.trajeto)}</div>` : '';
+    const formaHtml = item.formaPagamento ? `<span class="historico-forma">${ROTULO_PAGAMENTO[item.formaPagamento] || item.formaPagamento}</span>` : '';
     return `
       <div class="item-historico">
         <div>
           <div class="historico-data">${formatarDataHistorico(item.data)}</div>
           ${trajetoHtml}
           <div class="historico-detalhes">${item.distanciaKm.toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS)}</div>
+          ${formaHtml}
         </div>
         <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
       </div>
     `;
   }).join('');
+}
+
+function exportarHistoricoPdf() {
+  if (!window.jsPDFLib) {
+    alert('Exportação de PDF só funciona no aplicativo instalado.');
+    return;
+  }
+  const historico = historicoFiltrado();
+  if (!historico.length) {
+    alert('Não há corridas nesse período pra exportar.');
+    return;
+  }
+
+  const doc = new window.jsPDFLib();
+  const totalValor = historico.reduce(function(soma, item) { return soma + item.valor; }, 0);
+
+  doc.setFontSize(16);
+  doc.text('Taxímetro — Histórico de corridas', 14, 18);
+  doc.setFontSize(10);
+  doc.text('Gerado em ' + new Date().toLocaleString('pt-BR'), 14, 25);
+  doc.text(historico.length + ' corrida(s) — Total: R$ ' + formatarMoeda(totalValor), 14, 31);
+
+  let y = 42;
+  doc.setFontSize(9);
+  doc.text('Data', 14, y);
+  doc.text('Trajeto', 42, y);
+  doc.text('Km', 118, y);
+  doc.text('Tempo', 135, y);
+  doc.text('Pagto', 158, y);
+  doc.text('Valor', 178, y);
+  y += 4;
+  doc.line(14, y, 196, y);
+  y += 5;
+
+  historico.forEach(function(item) {
+    if (y > 280) { doc.addPage(); y = 18; }
+    doc.text(formatarDataHistorico(item.data), 14, y);
+    doc.text((item.trajeto || '-').substring(0, 32), 42, y);
+    doc.text(item.distanciaKm.toFixed(2).replace('.', ','), 118, y);
+    doc.text(formatarTempo(item.tempoS), 135, y);
+    doc.text(ROTULO_PAGAMENTO[item.formaPagamento] || '-', 158, y);
+    doc.text('R$ ' + formatarMoeda(item.valor), 178, y);
+    y += 6;
+  });
+
+  doc.save('taximetro-historico.pdf');
 }
 
 function escapeHtmlTexto(str) {
@@ -645,7 +984,7 @@ function escapeHtmlTexto(str) {
 }
 
 function abrirHistorico() {
-  renderizarHistorico();
+  aplicarFiltroPeriodo('tudo');
   document.getElementById('tela-medidor').classList.remove('ativa');
   document.getElementById('tela-historico').classList.add('ativa');
 }
