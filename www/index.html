@@ -8,24 +8,19 @@
 <script src="libs-bundle.js"></script>
 <style>
   :root {
-    --bg: #0A0E0C;
-    --painel: #121712;
-    --borda: #2A342A;
-    --texto: #E8F0E8;
-    --texto-fraco: #7C8C7C;
+    --bg: #0A140D;
+    --painel: #182218;
+    --borda: #323C32;
+    --texto: #E5F2E8;
+    --texto-fraco: #A9B6AC;
     --destaque: #4ADE80;
+    --texto-em-destaque: #002A00;
+    --brilho: rgba(74, 222, 128, 0.25);
     --alerta: #F59E0B;
     --perigo: #EF4444;
+    --escala-fonte: 1;
   }
-  html[data-tema="ambar"] {
-    --bg: #0E0B08; --painel: #171310; --borda: #342A20; --destaque: #F5A623;
-  }
-  html[data-tema="azul"] {
-    --bg: #080E12; --painel: #10171C; --borda: #20323A; --destaque: #38BDF8;
-  }
-  html[data-tema="vermelho"] {
-    --bg: #120909; --painel: #1A1111; --borda: #3A2323; --destaque: #F87171;
-  }
+  html { font-size: calc(16px * var(--escala-fonte)); }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body {
     height: 100%;
@@ -49,17 +44,76 @@
   .cabecalho h1 { font-size: 1.125rem; font-weight: 600; }
   .marca-app { font-size: 0.6875rem; color: var(--texto-fraco); margin-top: 2px; letter-spacing: 0.02em; }
 
-  .tema-swatches { display: flex; gap: 12px; }
-  .tema-swatch {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    background: var(--cor-swatch);
-    cursor: pointer;
-    padding: 0;
+  /* ---------- Aparencia (mesmo modelo do painel do site) ---------- */
+  .aparencia-box {
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 24px;
   }
-  .tema-swatch[data-ativo="true"] { border-color: var(--texto); }
+  .aparencia-box h2 { font-size: 1.0625rem; font-weight: 600; margin-bottom: 6px; }
+  .aparencia-ajuda { font-size: 0.8125rem; color: var(--texto-fraco); margin-bottom: 18px; line-height: 1.5; }
+  .aparencia-box label {
+    display: block; font-size: 0.875rem; color: var(--texto-fraco); margin-bottom: 10px;
+  }
+  .tema-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .tema-swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 10px 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.6875rem;
+    color: var(--texto-fraco);
+  }
+  .tema-swatch[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .tema-preview {
+    width: 100%;
+    height: 34px;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 5px;
+    padding-bottom: 5px;
+  }
+  .tema-preview span { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .fonte-opcoes { display: flex; gap: 10px; margin-bottom: 20px; }
+  .fonte-opcao {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--borda);
+    color: var(--texto-fraco);
+    padding: 12px 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.875rem;
+    border-radius: 8px;
+  }
+  .fonte-opcao[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .aparencia-salvar {
+    background: var(--destaque);
+    color: var(--texto-em-destaque);
+    border: none;
+    width: 100%;
+    padding: 14px;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .aparencia-msg { text-align: center; color: var(--destaque); font-size: 0.875rem; margin-top: 10px; min-height: 1.2em; }
 
   .pagamento-modal {
     position: fixed; inset: 0; background: rgba(0,0,0,0.7);
@@ -163,7 +217,7 @@
     font-variant-numeric: tabular-nums;
     color: var(--destaque);
     line-height: 1;
-    text-shadow: 0 0 24px rgba(74, 222, 128, 0.25);
+    text-shadow: 0 0 24px var(--brilho);
   }
   .valor-corrida .cifrao { font-size: 0.5em; vertical-align: 12%; margin-right: 4px; color: var(--texto-fraco); }
 
@@ -197,7 +251,7 @@
     cursor: pointer;
     border-radius: 4px;
   }
-  .btn-iniciar { background: var(--destaque); color: #06280F; }
+  .btn-iniciar { background: var(--destaque); color: var(--texto-em-destaque); }
   .btn-finalizar { background: var(--perigo); color: #2B0808; }
   .btn-secundario {
     width: 100%;
@@ -235,7 +289,7 @@
   .campo-ajuda { font-size: 0.75rem; color: var(--texto-fraco); margin-top: 6px; }
   .config-salvar {
     background: var(--destaque);
-    color: #06280F;
+    color: var(--texto-em-destaque);
     border: none;
     width: 100%;
     padding: 16px;
@@ -279,10 +333,83 @@
 </head>
 <body>
 <script>
+// ===================== Aparencia (temas + tamanho do texto) =====================
+// Mesma lista de temas do painel do site institucional, com contraste ja
+// conferido pra letra nunca ficar apagada.
+var TEMAS = {
+  'teal-escuro':      { bg: '#0B1220', texto: '#F1F5F9', destaque: '#2DD4BF' },
+  'azul-cibernetico': { bg: '#0A0E1A', texto: '#E8EEF7', destaque: '#4C8DFF' },
+  'verde-seguranca':  { bg: '#0A140D', texto: '#E5F2E8', destaque: '#4ADE80' },
+  'grafite':          { bg: '#161819', texto: '#F0F0F0', destaque: '#2DD4BF' },
+  'claro-corporativo':{ bg: '#F4F6F9', texto: '#12181F', destaque: '#0F6E63' },
+  'roxo-tech':        { bg: '#120A1A', texto: '#F0EAF5', destaque: '#9D6FE0' }
+};
+var TEMA_PADRAO = 'verde-seguranca';
+var FONTE_PADRAO = '1';
+var CHAVE_APARENCIA = 'taximetro_aparencia';
+
+var temaSelecionado = TEMA_PADRAO;
+var fonteSelecionada = FONTE_PADRAO;
+
+function _hexParaRgb(hex) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(function(c) { return c + c; }).join('');
+  var n = parseInt(hex, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function ajustarCor(hex, quantidade) {
+  var c = _hexParaRgb(hex);
+  var r = Math.max(0, Math.min(255, c.r + quantidade));
+  var g = Math.max(0, Math.min(255, c.g + quantidade));
+  var b = Math.max(0, Math.min(255, c.b + quantidade));
+  return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1).toUpperCase();
+}
+function _claridade(hex) {
+  var c = _hexParaRgb(hex);
+  return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
+}
+
+// Pinta a tela inteira na hora. Como tudo no app usa essas variaveis,
+// a propria tela de configuracoes muda junto, sem precisar sair dela.
+function aplicarTemaVisual(nome) {
+  var tema = TEMAS[nome] || TEMAS[TEMA_PADRAO];
+  var raiz = document.documentElement.style;
+  var fundoClaro = _claridade(tema.bg) > 0.6;
+  var destaqueClaro = _claridade(tema.destaque) > 0.5;
+  var d = _hexParaRgb(tema.destaque);
+
+  raiz.setProperty('--bg', tema.bg);
+  raiz.setProperty('--painel', fundoClaro ? ajustarCor(tema.bg, 10) : ajustarCor(tema.bg, 14));
+  raiz.setProperty('--borda', fundoClaro ? ajustarCor(tema.bg, -34) : ajustarCor(tema.bg, 40));
+  raiz.setProperty('--texto', tema.texto);
+  raiz.setProperty('--texto-fraco', fundoClaro ? ajustarCor(tema.texto, 92) : ajustarCor(tema.texto, -68));
+  raiz.setProperty('--destaque', tema.destaque);
+  raiz.setProperty('--texto-em-destaque', destaqueClaro ? ajustarCor(tema.destaque, -180) : '#FFFFFF');
+  raiz.setProperty('--brilho', fundoClaro ? 'transparent' : 'rgba(' + d.r + ',' + d.g + ',' + d.b + ',0.25)');
+  raiz.setProperty('--alerta', fundoClaro ? '#B45309' : '#F59E0B');
+  raiz.setProperty('--perigo', fundoClaro ? '#C62828' : '#EF4444');
+}
+
+function aplicarEscalaFonte(valor) {
+  document.documentElement.style.setProperty('--escala-fonte', valor);
+}
+
+function salvarAparenciaNoAparelho() {
   try {
-    const temaSalvo = localStorage.getItem('taximetro_tema');
-    if (temaSalvo && temaSalvo !== 'verde') document.documentElement.setAttribute('data-tema', temaSalvo);
+    localStorage.setItem(CHAVE_APARENCIA, JSON.stringify({ tema: temaSelecionado, fonte: fonteSelecionada }));
   } catch (e) {}
+}
+
+// Le o que estava salvo e aplica antes da tela desenhar (sem piscar).
+(function carregarAparencia() {
+  try {
+    var salvo = JSON.parse(localStorage.getItem(CHAVE_APARENCIA) || 'null');
+    if (salvo && TEMAS[salvo.tema]) temaSelecionado = salvo.tema;
+    if (salvo && salvo.fonte) fonteSelecionada = salvo.fonte;
+  } catch (e) {}
+  aplicarTemaVisual(temaSelecionado);
+  aplicarEscalaFonte(fonteSelecionada);
+})();
 </script>
 
 <!-- ===================== TELA DO TAXÍMETRO ===================== -->
@@ -345,14 +472,47 @@
     </button>
   </div>
   <div class="config-corpo">
-    <div class="campo">
-      <label>Cor do painel</label>
-      <div class="tema-swatches">
-        <button type="button" class="tema-swatch" data-tema-btn="verde" style="--cor-swatch:#4ADE80" onclick="aplicarTema('verde')" aria-label="Verde"></button>
-        <button type="button" class="tema-swatch" data-tema-btn="ambar" style="--cor-swatch:#F5A623" onclick="aplicarTema('ambar')" aria-label="Âmbar"></button>
-        <button type="button" class="tema-swatch" data-tema-btn="azul" style="--cor-swatch:#38BDF8" onclick="aplicarTema('azul')" aria-label="Azul"></button>
-        <button type="button" class="tema-swatch" data-tema-btn="vermelho" style="--cor-swatch:#F87171" onclick="aplicarTema('vermelho')" aria-label="Vermelho"></button>
+    <div class="aparencia-box">
+      <h2>Aparência do app</h2>
+      <p class="aparencia-ajuda">Temas prontos, com contraste já conferido pra letra nunca ficar apagada. A tela muda na hora que você toca.</p>
+
+      <label>Tema de cores</label>
+      <div class="tema-swatches" id="tema-swatches">
+        <button type="button" class="tema-swatch" data-tema-btn="teal-escuro" onclick="escolherTema('teal-escuro')">
+          <span class="tema-preview" style="background:#0B1220;"><span style="background:#F1F5F9"></span><span style="background:#2DD4BF"></span></span>
+          Teal Escuro
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="azul-cibernetico" onclick="escolherTema('azul-cibernetico')">
+          <span class="tema-preview" style="background:#0A0E1A;"><span style="background:#E8EEF7"></span><span style="background:#4C8DFF"></span></span>
+          Azul Cibernético
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="verde-seguranca" onclick="escolherTema('verde-seguranca')">
+          <span class="tema-preview" style="background:#0A140D;"><span style="background:#E5F2E8"></span><span style="background:#4ADE80"></span></span>
+          Verde Segurança
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="grafite" onclick="escolherTema('grafite')">
+          <span class="tema-preview" style="background:#161819;"><span style="background:#F0F0F0"></span><span style="background:#2DD4BF"></span></span>
+          Grafite
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="claro-corporativo" onclick="escolherTema('claro-corporativo')">
+          <span class="tema-preview" style="background:#F4F6F9;"><span style="background:#12181F"></span><span style="background:#0F6E63"></span></span>
+          Claro Corporativo
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="roxo-tech" onclick="escolherTema('roxo-tech')">
+          <span class="tema-preview" style="background:#120A1A;"><span style="background:#F0EAF5"></span><span style="background:#9D6FE0"></span></span>
+          Roxo Tech
+        </button>
       </div>
+
+      <label>Tamanho do texto</label>
+      <div class="fonte-opcoes" id="fonte-opcoes">
+        <button type="button" class="fonte-opcao" data-fonte-btn="0.9" onclick="escolherFonte('0.9')">Pequeno</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1" onclick="escolherFonte('1')">Médio</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1.15" onclick="escolherFonte('1.15')">Grande</button>
+      </div>
+
+      <button class="aparencia-salvar" onclick="salvarAparencia()">Salvar aparência</button>
+      <p id="aparencia-msg" class="aparencia-msg"></p>
     </div>
     <div class="campo">
       <label>Bandeira 1 — bandeirada de dia</label>
@@ -526,26 +686,43 @@ function salvarConfiguracoes() {
 
 function abrirConfiguracoes() {
   preencherFormularioConfig();
-  marcarTemaAtivo();
+  marcarAparenciaAtiva();
   document.getElementById('tela-medidor').classList.remove('ativa');
   document.getElementById('tela-config').classList.add('ativa');
 }
 
-function marcarTemaAtivo() {
-  const temaAtual = localStorage.getItem('taximetro_tema') || 'verde';
+function marcarAparenciaAtiva() {
   document.querySelectorAll('.tema-swatch').forEach(function(btn) {
-    btn.setAttribute('data-ativo', btn.getAttribute('data-tema-btn') === temaAtual ? 'true' : 'false');
+    btn.setAttribute('data-ativo', btn.getAttribute('data-tema-btn') === temaSelecionado ? 'true' : 'false');
+  });
+  document.querySelectorAll('.fonte-opcao').forEach(function(btn) {
+    btn.setAttribute('data-ativo', btn.getAttribute('data-fonte-btn') === fonteSelecionada ? 'true' : 'false');
   });
 }
 
-function aplicarTema(nome) {
-  if (nome === 'verde') {
-    document.documentElement.removeAttribute('data-tema');
-  } else {
-    document.documentElement.setAttribute('data-tema', nome);
+// Toca no tema -> pinta a tela na hora (inclusive esta tela de
+// configuracoes) e ja guarda no aparelho, pra nao ter como perder.
+function escolherTema(nome) {
+  temaSelecionado = nome;
+  aplicarTemaVisual(nome);
+  salvarAparenciaNoAparelho();
+  marcarAparenciaAtiva();
+}
+
+function escolherFonte(valor) {
+  fonteSelecionada = valor;
+  aplicarEscalaFonte(valor);
+  salvarAparenciaNoAparelho();
+  marcarAparenciaAtiva();
+}
+
+function salvarAparencia() {
+  salvarAparenciaNoAparelho();
+  const msg = document.getElementById('aparencia-msg');
+  if (msg) {
+    msg.textContent = 'Aparência salva.';
+    setTimeout(function() { msg.textContent = ''; }, 2500);
   }
-  try { localStorage.setItem('taximetro_tema', nome); } catch (e) {}
-  marcarTemaAtivo();
 }
 
 function fecharConfiguracoes() {

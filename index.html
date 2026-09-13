@@ -6,15 +6,19 @@
 <title>Taxímetro</title>
 <style>
   :root {
-    --bg: #0A0E0C;
-    --painel: #121712;
-    --borda: #2A342A;
-    --texto: #E8F0E8;
-    --texto-fraco: #7C8C7C;
+    --bg: #0A140D;
+    --painel: #182218;
+    --borda: #323C32;
+    --texto: #E5F2E8;
+    --texto-fraco: #A9B6AC;
     --destaque: #4ADE80;
+    --texto-em-destaque: #002A00;
+    --brilho: rgba(74, 222, 128, 0.25);
     --alerta: #F59E0B;
     --perigo: #EF4444;
+    --escala-fonte: 1;
   }
+  html { font-size: calc(16px * var(--escala-fonte)); }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body {
     height: 100%;
@@ -36,6 +40,130 @@
     border-bottom: 1px solid var(--borda);
   }
   .cabecalho h1 { font-size: 1.125rem; font-weight: 600; }
+  .marca-app { font-size: 0.6875rem; color: var(--texto-fraco); margin-top: 2px; letter-spacing: 0.02em; }
+
+  /* ---------- Aparencia (mesmo modelo do painel do site) ---------- */
+  .aparencia-box {
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 24px;
+  }
+  .aparencia-box h2 { font-size: 1.0625rem; font-weight: 600; margin-bottom: 6px; }
+  .aparencia-ajuda { font-size: 0.8125rem; color: var(--texto-fraco); margin-bottom: 18px; line-height: 1.5; }
+  .aparencia-box label {
+    display: block; font-size: 0.875rem; color: var(--texto-fraco); margin-bottom: 10px;
+  }
+  .tema-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .tema-swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 10px 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.6875rem;
+    color: var(--texto-fraco);
+  }
+  .tema-swatch[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .tema-preview {
+    width: 100%;
+    height: 34px;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 5px;
+    padding-bottom: 5px;
+  }
+  .tema-preview span { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .fonte-opcoes { display: flex; gap: 10px; margin-bottom: 20px; }
+  .fonte-opcao {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--borda);
+    color: var(--texto-fraco);
+    padding: 12px 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.875rem;
+    border-radius: 8px;
+  }
+  .fonte-opcao[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .aparencia-salvar {
+    background: var(--destaque);
+    color: var(--texto-em-destaque);
+    border: none;
+    width: 100%;
+    padding: 14px;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .aparencia-msg { text-align: center; color: var(--destaque); font-size: 0.875rem; margin-top: 10px; min-height: 1.2em; }
+
+  .pagamento-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .pagamento-modal-inner {
+    background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 8px; padding: 24px; width: 100%; max-width: 360px;
+    text-align: center;
+  }
+  .pagamento-valor { font-size: 2rem; font-weight: 700; color: var(--destaque); margin: 12px 0; font-variant-numeric: tabular-nums; }
+  .pagamento-pergunta { color: var(--texto-fraco); font-size: 0.875rem; margin-bottom: 16px; }
+  .pagamento-opcoes { display: flex; gap: 10px; }
+  .pagamento-opcao {
+    flex: 1; padding: 16px 8px; background: var(--bg); border: 1px solid var(--borda);
+    color: var(--texto); font-size: 0.9375rem; font-weight: 600; border-radius: 4px; cursor: pointer;
+  }
+  .pagamento-opcao:hover { border-color: var(--destaque); }
+  .pix-qrcode-taxi { display: flex; justify-content: center; margin: 16px 0; }
+  .pix-codigo-texto-taxi {
+    width: 100%; background: var(--bg); border: 1px solid var(--borda); color: var(--texto);
+    padding: 10px; font-size: 0.6875rem; font-family: monospace; min-height: 60px; resize: none; margin-bottom: 10px;
+  }
+  .admin-btn {
+    width: 100%; padding: 12px; background: none; border: 1px solid var(--destaque);
+    color: var(--destaque); font-size: 0.875rem; font-weight: 600; border-radius: 4px; cursor: pointer;
+  }
+
+  .filtro-periodo { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filtro-btn {
+    background: none; border: 1px solid var(--borda); color: var(--texto-fraco);
+    padding: 8px 12px; font-size: 0.75rem; border-radius: 20px; cursor: pointer;
+  }
+  .filtro-btn[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .filtro-personalizado { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filtro-personalizado input {
+    background: var(--painel); border: 1px solid var(--borda); color: var(--texto);
+    padding: 8px; border-radius: 4px; font-size: 0.8125rem;
+  }
+  .filtro-personalizado span { color: var(--texto-fraco); font-size: 0.8125rem; }
+  .filtro-personalizado .admin-btn { width: auto; padding: 8px 14px; }
+  .historico-resumo {
+    background: var(--bg); border: 1px solid var(--borda); border-radius: 4px;
+    padding: 12px; margin-bottom: 14px; font-size: 0.8125rem; color: var(--texto-fraco);
+    display: flex; justify-content: space-between;
+  }
+  .historico-resumo strong { color: var(--destaque); font-size: 1rem; }
+  .historico-forma {
+    display: inline-block; font-size: 0.6875rem; padding: 2px 8px; border-radius: 10px;
+    background: var(--bg); border: 1px solid var(--borda); color: var(--texto-fraco); margin-top: 4px;
+  }
   .btn-engrenagem {
     background: none;
     border: none;
@@ -59,6 +187,19 @@
   .status-esperando { color: var(--alerta); }
   .status-sem-gps { color: var(--perigo); }
 
+  .campo-trajeto { padding: 0 20px 10px; }
+  .campo-trajeto input {
+    width: 100%;
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    color: var(--texto);
+    padding: 10px 12px;
+    font-size: 0.8125rem;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .campo-trajeto input:focus { outline: none; border-color: var(--destaque); }
+
   /* ---------- Painel principal ---------- */
   .painel-principal {
     flex: 1;
@@ -74,7 +215,7 @@
     font-variant-numeric: tabular-nums;
     color: var(--destaque);
     line-height: 1;
-    text-shadow: 0 0 24px rgba(74, 222, 128, 0.25);
+    text-shadow: 0 0 24px var(--brilho);
   }
   .valor-corrida .cifrao { font-size: 0.5em; vertical-align: 12%; margin-right: 4px; color: var(--texto-fraco); }
 
@@ -108,7 +249,7 @@
     cursor: pointer;
     border-radius: 4px;
   }
-  .btn-iniciar { background: var(--destaque); color: #06280F; }
+  .btn-iniciar { background: var(--destaque); color: var(--texto-em-destaque); }
   .btn-finalizar { background: var(--perigo); color: #2B0808; }
   .btn-secundario {
     width: 100%;
@@ -121,6 +262,7 @@
     cursor: pointer;
     border-radius: 4px;
   }
+  .btn-maps { display: flex; align-items: center; justify-content: center; }
 
   /* ---------- Configurações ---------- */
   .config-corpo { flex: 1; padding: 20px; overflow-y: auto; }
@@ -145,7 +287,7 @@
   .campo-ajuda { font-size: 0.75rem; color: var(--texto-fraco); margin-top: 6px; }
   .config-salvar {
     background: var(--destaque);
-    color: #06280F;
+    color: var(--texto-em-destaque);
     border: none;
     width: 100%;
     padding: 16px;
@@ -188,11 +330,93 @@
 </style>
 </head>
 <body>
+<script>
+// ===================== Aparencia (temas + tamanho do texto) =====================
+// Mesma lista de temas do painel do site institucional, com contraste ja
+// conferido pra letra nunca ficar apagada.
+var TEMAS = {
+  'teal-escuro':      { bg: '#0B1220', texto: '#F1F5F9', destaque: '#2DD4BF' },
+  'azul-cibernetico': { bg: '#0A0E1A', texto: '#E8EEF7', destaque: '#4C8DFF' },
+  'verde-seguranca':  { bg: '#0A140D', texto: '#E5F2E8', destaque: '#4ADE80' },
+  'grafite':          { bg: '#161819', texto: '#F0F0F0', destaque: '#2DD4BF' },
+  'claro-corporativo':{ bg: '#F4F6F9', texto: '#12181F', destaque: '#0F6E63' },
+  'roxo-tech':        { bg: '#120A1A', texto: '#F0EAF5', destaque: '#9D6FE0' }
+};
+var TEMA_PADRAO = 'verde-seguranca';
+var FONTE_PADRAO = '1';
+var CHAVE_APARENCIA = 'taximetro_aparencia';
+
+var temaSelecionado = TEMA_PADRAO;
+var fonteSelecionada = FONTE_PADRAO;
+
+function _hexParaRgb(hex) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(function(c) { return c + c; }).join('');
+  var n = parseInt(hex, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function ajustarCor(hex, quantidade) {
+  var c = _hexParaRgb(hex);
+  var r = Math.max(0, Math.min(255, c.r + quantidade));
+  var g = Math.max(0, Math.min(255, c.g + quantidade));
+  var b = Math.max(0, Math.min(255, c.b + quantidade));
+  return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1).toUpperCase();
+}
+function _claridade(hex) {
+  var c = _hexParaRgb(hex);
+  return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
+}
+
+// Pinta a tela inteira na hora. Como tudo no app usa essas variaveis,
+// a propria tela de configuracoes muda junto, sem precisar sair dela.
+function aplicarTemaVisual(nome) {
+  var tema = TEMAS[nome] || TEMAS[TEMA_PADRAO];
+  var raiz = document.documentElement.style;
+  var fundoClaro = _claridade(tema.bg) > 0.6;
+  var destaqueClaro = _claridade(tema.destaque) > 0.5;
+  var d = _hexParaRgb(tema.destaque);
+
+  raiz.setProperty('--bg', tema.bg);
+  raiz.setProperty('--painel', fundoClaro ? ajustarCor(tema.bg, 10) : ajustarCor(tema.bg, 14));
+  raiz.setProperty('--borda', fundoClaro ? ajustarCor(tema.bg, -34) : ajustarCor(tema.bg, 40));
+  raiz.setProperty('--texto', tema.texto);
+  raiz.setProperty('--texto-fraco', fundoClaro ? ajustarCor(tema.texto, 92) : ajustarCor(tema.texto, -68));
+  raiz.setProperty('--destaque', tema.destaque);
+  raiz.setProperty('--texto-em-destaque', destaqueClaro ? ajustarCor(tema.destaque, -180) : '#FFFFFF');
+  raiz.setProperty('--brilho', fundoClaro ? 'transparent' : 'rgba(' + d.r + ',' + d.g + ',' + d.b + ',0.25)');
+  raiz.setProperty('--alerta', fundoClaro ? '#B45309' : '#F59E0B');
+  raiz.setProperty('--perigo', fundoClaro ? '#C62828' : '#EF4444');
+}
+
+function aplicarEscalaFonte(valor) {
+  document.documentElement.style.setProperty('--escala-fonte', valor);
+}
+
+function salvarAparenciaNoAparelho() {
+  try {
+    localStorage.setItem(CHAVE_APARENCIA, JSON.stringify({ tema: temaSelecionado, fonte: fonteSelecionada }));
+  } catch (e) {}
+}
+
+// Le o que estava salvo e aplica antes da tela desenhar (sem piscar).
+(function carregarAparencia() {
+  try {
+    var salvo = JSON.parse(localStorage.getItem(CHAVE_APARENCIA) || 'null');
+    if (salvo && TEMAS[salvo.tema]) temaSelecionado = salvo.tema;
+    if (salvo && salvo.fonte) fonteSelecionada = salvo.fonte;
+  } catch (e) {}
+  aplicarTemaVisual(temaSelecionado);
+  aplicarEscalaFonte(fonteSelecionada);
+})();
+</script>
 
 <!-- ===================== TELA DO TAXÍMETRO ===================== -->
 <div id="tela-medidor" class="tela ativa">
   <div class="cabecalho">
-    <h1>Taxímetro</h1>
+    <div>
+      <h1>Taxímetro</h1>
+      <p class="marca-app">Fortaleza Digital</p>
+    </div>
     <div style="display:flex; gap:4px;">
       <button class="btn-engrenagem" onclick="abrirHistorico()" aria-label="Histórico de corridas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4.5L3 8"/><path d="M12 7v5l3 3"/></svg>
@@ -204,6 +428,10 @@
   </div>
 
   <div id="status-linha" class="status-linha status-parado-app">Pronto pra iniciar</div>
+
+  <div class="campo-trajeto">
+    <input type="text" id="campo-de-para" placeholder="De onde pra onde (opcional) — ex: Goiatuba → Itumbiara">
+  </div>
 
   <div id="aviso-gps" class="aviso-gps" style="display:none">
     Não consegui acessar sua localização. Verifique se o GPS está ligado e se o app tem permissão de localização.
@@ -225,6 +453,10 @@
 
   <div class="controles">
     <button id="btn-principal" class="btn-grande btn-iniciar" onclick="alternarCorrida()">Iniciar corrida</button>
+    <button id="btn-maps" class="btn-secundario btn-maps" onclick="abrirGoogleMaps()" style="display:none;">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-4px; margin-right:6px;"><path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>
+      Abrir no Google Maps
+    </button>
     <button id="btn-reiniciar" class="btn-secundario" onclick="reiniciarCorrida()" style="display:none;">Zerar e começar outra corrida</button>
   </div>
 </div>
@@ -238,10 +470,71 @@
     </button>
   </div>
   <div class="config-corpo">
+    <div class="aparencia-box">
+      <h2>Aparência do app</h2>
+      <p class="aparencia-ajuda">Temas prontos, com contraste já conferido pra letra nunca ficar apagada. A tela muda na hora que você toca.</p>
+
+      <label>Tema de cores</label>
+      <div class="tema-swatches" id="tema-swatches">
+        <button type="button" class="tema-swatch" data-tema-btn="teal-escuro" onclick="escolherTema('teal-escuro')">
+          <span class="tema-preview" style="background:#0B1220;"><span style="background:#F1F5F9"></span><span style="background:#2DD4BF"></span></span>
+          Teal Escuro
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="azul-cibernetico" onclick="escolherTema('azul-cibernetico')">
+          <span class="tema-preview" style="background:#0A0E1A;"><span style="background:#E8EEF7"></span><span style="background:#4C8DFF"></span></span>
+          Azul Cibernético
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="verde-seguranca" onclick="escolherTema('verde-seguranca')">
+          <span class="tema-preview" style="background:#0A140D;"><span style="background:#E5F2E8"></span><span style="background:#4ADE80"></span></span>
+          Verde Segurança
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="grafite" onclick="escolherTema('grafite')">
+          <span class="tema-preview" style="background:#161819;"><span style="background:#F0F0F0"></span><span style="background:#2DD4BF"></span></span>
+          Grafite
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="claro-corporativo" onclick="escolherTema('claro-corporativo')">
+          <span class="tema-preview" style="background:#F4F6F9;"><span style="background:#12181F"></span><span style="background:#0F6E63"></span></span>
+          Claro Corporativo
+        </button>
+        <button type="button" class="tema-swatch" data-tema-btn="roxo-tech" onclick="escolherTema('roxo-tech')">
+          <span class="tema-preview" style="background:#120A1A;"><span style="background:#F0EAF5"></span><span style="background:#9D6FE0"></span></span>
+          Roxo Tech
+        </button>
+      </div>
+
+      <label>Tamanho do texto</label>
+      <div class="fonte-opcoes" id="fonte-opcoes">
+        <button type="button" class="fonte-opcao" data-fonte-btn="0.9" onclick="escolherFonte('0.9')">Pequeno</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1" onclick="escolherFonte('1')">Médio</button>
+        <button type="button" class="fonte-opcao" data-fonte-btn="1.15" onclick="escolherFonte('1.15')">Grande</button>
+      </div>
+
+      <button class="aparencia-salvar" onclick="salvarAparencia()">Salvar aparência</button>
+      <p id="aparencia-msg" class="aparencia-msg"></p>
+    </div>
     <div class="campo">
-      <label>Bandeirada (valor inicial fixo)</label>
-      <input type="number" id="cfg-bandeirada" inputmode="decimal" step="0.01" min="0">
-      <p class="campo-ajuda">Valor cobrado assim que a corrida começa, antes de andar ou esperar.</p>
+      <label>Bandeira 1 — bandeirada de dia</label>
+      <input type="number" id="cfg-bandeirada-dia" inputmode="decimal" step="0.01" min="0">
+      <p class="campo-ajuda">Valor inicial cobrado no horário de bandeira 1.</p>
+    </div>
+    <div class="campo">
+      <label>Bandeira 2 — bandeirada de noite</label>
+      <input type="number" id="cfg-bandeirada-noite" inputmode="decimal" step="0.01" min="0">
+      <p class="campo-ajuda">Valor inicial cobrado no horário de bandeira 2.</p>
+    </div>
+    <div class="campo">
+      <label>Bandeira 2 começa às (hora, 0-23)</label>
+      <input type="number" id="cfg-hora-inicio-noite" inputmode="numeric" step="1" min="0" max="23">
+    </div>
+    <div class="campo">
+      <label>Bandeira 2 termina às (hora, 0-23)</label>
+      <input type="number" id="cfg-hora-fim-noite" inputmode="numeric" step="1" min="0" max="23">
+      <p class="campo-ajuda">Ex: começa às 22 e termina às 6 — nesse intervalo (passando da meia-noite) vale a bandeira 2. Fora dele, bandeira 1. Funciona certo independente do celular mostrar hora em formato 12h ou 24h.</p>
+    </div>
+    <div class="campo">
+      <label>Km incluídos na bandeirada (não cobra por km até aqui)</label>
+      <input type="number" id="cfg-km-incluido" inputmode="decimal" step="0.1" min="0">
+      <p class="campo-ajuda">Só começa a cobrar valor por km rodado depois de passar dessa distância. Coloque 0 pra cobrar por km desde o início.</p>
     </div>
     <div class="campo">
       <label>Valor por km rodado</label>
@@ -257,6 +550,10 @@
       <input type="number" id="cfg-limiar-velocidade" inputmode="decimal" step="0.5" min="0">
       <p class="campo-ajuda">Abaixo disso, conta como parado/esperando em vez de rodando.</p>
     </div>
+    <div class="campo">
+      <label>Chave Pix (pra receber pagamento)</label>
+      <input type="text" id="cfg-chave-pix" placeholder="Telefone, e-mail, CPF ou chave aleatória">
+    </div>
     <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
     <p id="config-msg" class="config-msg"></p>
   </div>
@@ -271,8 +568,43 @@
     </button>
   </div>
   <div class="config-corpo">
+    <div class="filtro-periodo">
+      <button type="button" class="filtro-btn" data-filtro-btn="7" onclick="aplicarFiltroPeriodo('7')">7 dias</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="15" onclick="aplicarFiltroPeriodo('15')">15 dias</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="mes" onclick="aplicarFiltroPeriodo('mes')">Mês</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="tudo" onclick="aplicarFiltroPeriodo('tudo')">Tudo</button>
+      <button type="button" class="filtro-btn" data-filtro-btn="personalizado" onclick="aplicarFiltroPeriodo('personalizado')">Período</button>
+    </div>
+    <div id="filtro-personalizado-campos" class="filtro-personalizado" style="display:none">
+      <input type="date" id="filtro-data-de">
+      <span>até</span>
+      <input type="date" id="filtro-data-ate">
+      <button type="button" class="admin-btn" onclick="aplicarFiltroPeriodo('personalizado')">OK</button>
+    </div>
+    <div id="historico-resumo" class="historico-resumo"></div>
     <div id="lista-historico"></div>
-    <button class="btn-secundario" onclick="limparHistorico()" style="margin-top:20px;">Apagar todo o histórico</button>
+    <button class="btn-secundario" onclick="exportarHistoricoPdf()" style="margin-top:14px;">Exportar PDF do período</button>
+    <button class="btn-secundario" onclick="limparHistorico()" style="margin-top:10px;">Apagar todo o histórico</button>
+  </div>
+</div>
+
+<!-- ===================== MODAL DE FORMA DE PAGAMENTO ===================== -->
+<div id="modal-pagamento" class="pagamento-modal" style="display:none">
+  <div class="pagamento-modal-inner">
+    <h3>Corrida finalizada</h3>
+    <div class="pagamento-valor" id="pagamento-valor">R$ 0,00</div>
+    <p class="pagamento-pergunta">Como o cliente vai pagar?</p>
+    <div class="pagamento-opcoes">
+      <button type="button" class="pagamento-opcao" onclick="escolherPagamento('dinheiro')">Dinheiro</button>
+      <button type="button" class="pagamento-opcao" onclick="escolherPagamento('cartao')">Cartão</button>
+      <button type="button" class="pagamento-opcao" onclick="escolherPagamento('pix')">Pix</button>
+    </div>
+    <div id="pagamento-pix-area" style="display:none">
+      <div id="pix-qrcode-taxi" class="pix-qrcode-taxi"></div>
+      <textarea id="pagamento-pix-codigo" class="pix-codigo-texto-taxi" readonly></textarea>
+      <button class="admin-btn" type="button" onclick="copiarCodigoPixTaxi()">Copiar código Pix</button>
+      <button class="config-salvar" type="button" style="margin-top:10px;" onclick="concluirFinalizacao('pix')">Pagamento recebido — concluir</button>
+    </div>
   </div>
 </div>
 
@@ -282,11 +614,25 @@ const CHAVE_CONFIG = 'taximetro_config';
 const CHAVE_ESTADO = 'taximetro_estado_corrida';
 
 const CONFIG_PADRAO = {
-  bandeirada: 5.00,
-  taxaKm: 3.20,
+  bandeiradaDia: 10.00,
+  bandeiradaNoite: 20.00,
+  horaInicioNoite: 22, // a partir dessa hora (0-23) já é bandeira 2
+  horaFimNoite: 6, // até essa hora (0-23) ainda é bandeira 2
+  kmIncluidoNaBandeirada: 1.5, // primeiros X km não cobram valor por km, só depois disso
+  taxaKm: 2.80,
   taxaEspera: 0.55, // por minuto parado
   limiarVelocidadeKmh: 5
 };
+
+function bandeiradaAtual() {
+  const hora = new Date().getHours();
+  const inicio = CONFIG.horaInicioNoite;
+  const fim = CONFIG.horaFimNoite;
+  const emHorarioNoturno = inicio > fim
+    ? (hora >= inicio || hora < fim)   // ex: 21h as 5h (passa da meia-noite)
+    : (hora >= inicio && hora < fim);  // caso nao vire o dia
+  return emHorarioNoturno ? CONFIG.bandeiradaNoite : CONFIG.bandeiradaDia;
+}
 
 function carregarConfiguracoes() {
   try {
@@ -300,19 +646,35 @@ function carregarConfiguracoes() {
 let CONFIG = carregarConfiguracoes();
 
 function preencherFormularioConfig() {
-  document.getElementById('cfg-bandeirada').value = CONFIG.bandeirada;
+  document.getElementById('cfg-bandeirada-dia').value = CONFIG.bandeiradaDia;
+  document.getElementById('cfg-bandeirada-noite').value = CONFIG.bandeiradaNoite;
+  document.getElementById('cfg-hora-inicio-noite').value = CONFIG.horaInicioNoite;
+  document.getElementById('cfg-hora-fim-noite').value = CONFIG.horaFimNoite;
+  document.getElementById('cfg-km-incluido').value = CONFIG.kmIncluidoNaBandeirada;
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
+  document.getElementById('cfg-chave-pix').value = CONFIG.chavePix || '';
 }
 
 function salvarConfiguracoes() {
-  const bandeirada = parseFloat(document.getElementById('cfg-bandeirada').value) || 0;
+  const bandeiradaDia = parseFloat(document.getElementById('cfg-bandeirada-dia').value) || 0;
+  const bandeiradaNoite = parseFloat(document.getElementById('cfg-bandeirada-noite').value) || 0;
+  const horaInicioNoite = parseInt(document.getElementById('cfg-hora-inicio-noite').value, 10);
+  const horaFimNoite = parseInt(document.getElementById('cfg-hora-fim-noite').value, 10);
+  const kmIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-km-incluido').value);
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
+  const chavePix = document.getElementById('cfg-chave-pix').value.trim();
 
-  CONFIG = { bandeirada, taxaKm, taxaEspera, limiarVelocidadeKmh };
+  CONFIG = {
+    bandeiradaDia, bandeiradaNoite,
+    horaInicioNoite: isNaN(horaInicioNoite) ? CONFIG_PADRAO.horaInicioNoite : horaInicioNoite,
+    horaFimNoite: isNaN(horaFimNoite) ? CONFIG_PADRAO.horaFimNoite : horaFimNoite,
+    kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
+    taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix
+  };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
 
   const msg = document.getElementById('config-msg');
@@ -322,8 +684,43 @@ function salvarConfiguracoes() {
 
 function abrirConfiguracoes() {
   preencherFormularioConfig();
+  marcarAparenciaAtiva();
   document.getElementById('tela-medidor').classList.remove('ativa');
   document.getElementById('tela-config').classList.add('ativa');
+}
+
+function marcarAparenciaAtiva() {
+  document.querySelectorAll('.tema-swatch').forEach(function(btn) {
+    btn.setAttribute('data-ativo', btn.getAttribute('data-tema-btn') === temaSelecionado ? 'true' : 'false');
+  });
+  document.querySelectorAll('.fonte-opcao').forEach(function(btn) {
+    btn.setAttribute('data-ativo', btn.getAttribute('data-fonte-btn') === fonteSelecionada ? 'true' : 'false');
+  });
+}
+
+// Toca no tema -> pinta a tela na hora (inclusive esta tela de
+// configuracoes) e ja guarda no aparelho, pra nao ter como perder.
+function escolherTema(nome) {
+  temaSelecionado = nome;
+  aplicarTemaVisual(nome);
+  salvarAparenciaNoAparelho();
+  marcarAparenciaAtiva();
+}
+
+function escolherFonte(valor) {
+  fonteSelecionada = valor;
+  aplicarEscalaFonte(valor);
+  salvarAparenciaNoAparelho();
+  marcarAparenciaAtiva();
+}
+
+function salvarAparencia() {
+  salvarAparenciaNoAparelho();
+  const msg = document.getElementById('aparencia-msg');
+  if (msg) {
+    msg.textContent = 'Aparência salva.';
+    setTimeout(function() { msg.textContent = ''; }, 2500);
+  }
 }
 
 function fecharConfiguracoes() {
@@ -344,6 +741,38 @@ function distanciaHaversineMetros(lat1, lon1, lat2, lon2) {
 
 // Distância mínima (em metros) pra considerar como movimento real, não ruído do GPS parado
 const DISTANCIA_MINIMA_RUIDO_M = 3;
+
+// ===================== Pix (payload EMV / BR Code) =====================
+function crc16Pix(payload) {
+  let resultado = 0xFFFF;
+  for (let i = 0; i < payload.length; i++) {
+    resultado ^= (payload.charCodeAt(i) << 8);
+    for (let j = 0; j < 8; j++) {
+      resultado = (resultado & 0x8000) ? ((resultado << 1) ^ 0x1021) & 0xFFFF : (resultado << 1) & 0xFFFF;
+    }
+  }
+  return resultado.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function campoPix(id, valor) {
+  return id + String(valor.length).padStart(2, '0') + valor;
+}
+
+function gerarPayloadPix(chave, valor, nome, cidade) {
+  const contaMerchant = campoPix('00', 'br.gov.bcb.pix') + campoPix('01', chave);
+  let payload =
+    campoPix('00', '01') +
+    campoPix('26', contaMerchant) +
+    campoPix('52', '0000') +
+    campoPix('53', '986') +
+    campoPix('54', valor.toFixed(2)) +
+    campoPix('58', 'BR') +
+    campoPix('59', nome.substring(0, 25)) +
+    campoPix('60', cidade.substring(0, 15)) +
+    campoPix('62', campoPix('05', '***'));
+  payload += '6304';
+  return payload + crc16Pix(payload);
+}
 
 // ===================== Estado da corrida =====================
 let corridaAtiva = false;
@@ -391,15 +820,23 @@ function processarNovaPosicao(pos) {
     const distanciaM = distanciaHaversineMetros(ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
     const tempoDecorridoS = (agoraMs - ultimaPosicao.tempoMs) / 1000;
 
-    if (tempoDecorridoS > 0 && tempoDecorridoS < 30) { // ignora saltos muito grandes de tempo (app em segundo plano, etc.)
+    if (tempoDecorridoS > 0 && tempoDecorridoS < 120) { // ignora saltos absurdos de tempo (celular desligado, app matado pelo sistema etc.) — 120s da margem pra atualizações em segundo plano, que naturalmente vêm mais espaçadas
       const velocidadeKmh = (distanciaM / 1000) / (tempoDecorridoS / 3600);
 
       estado.tempoTotalS += tempoDecorridoS;
 
       if (distanciaM >= DISTANCIA_MINIMA_RUIDO_M && velocidadeKmh >= CONFIG.limiarVelocidadeKmh) {
         // em movimento de verdade
-        estado.distanciaTotalKm += distanciaM / 1000;
-        estado.valorTotal += (distanciaM / 1000) * CONFIG.taxaKm;
+        const distanciaKmEsseTrecho = distanciaM / 1000;
+        const distanciaAntesDesseTrecho = estado.distanciaTotalKm;
+        estado.distanciaTotalKm += distanciaKmEsseTrecho;
+
+        // só cobra a partir do km configurado como "incluído na bandeirada" —
+        // calcula certo mesmo quando um único trecho cruza essa marca no meio
+        const kmIncluido = CONFIG.kmIncluidoNaBandeirada || 0;
+        const kmCobravelNesseTrecho = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntesDesseTrecho));
+        estado.valorTotal += kmCobravelNesseTrecho * CONFIG.taxaKm;
+
         atualizarTela('Em movimento', 'status-movimento');
       } else {
         // parado ou movimento pequeno demais (ruído do GPS)
@@ -439,8 +876,10 @@ function iniciarCorrida() {
     return;
   }
 
+  document.getElementById('campo-de-para').value = '';
+
   estado = {
-    valorTotal: CONFIG.bandeirada,
+    valorTotal: bandeiradaAtual(),
     distanciaTotalKm: 0,
     tempoTotalS: 0,
     ultimaAtualizacaoMs: Date.now()
@@ -450,38 +889,120 @@ function iniciarCorrida() {
 
   atualizarTela('Localizando...', 'status-parado-app');
 
-  watchId = navigator.geolocation.watchPosition(processarNovaPosicao, erroGps, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 15000
-  });
+  if (window.BackgroundGeolocationPlugin) {
+    // Dentro do app instalado: usa o plugin que continua funcionando
+    // com a tela desligada ou em outro aplicativo (mostra um aviso
+    // fixo na barra de notificações enquanto isso, exigido pelo
+    // próprio Android).
+    window.BackgroundGeolocationPlugin.addWatcher({
+      backgroundTitle: 'Taxímetro rodando',
+      backgroundMessage: 'Corrida em andamento — toque pra voltar ao app.',
+      requestPermissions: true,
+      stale: false,
+      distanceFilter: 0
+    }, function(location, erro) {
+      if (erro) { erroGps(erro); return; }
+      processarNovaPosicao({ coords: { latitude: location.latitude, longitude: location.longitude } });
+    }).then(function(id) { watchId = id; });
+  } else {
+    // Testando num navegador comum: usa a API padrão da web
+    // (só funciona com a tela do taxímetro aberta e visível)
+    watchId = navigator.geolocation.watchPosition(processarNovaPosicao, erroGps, {
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 15000
+    });
+  }
 
   document.getElementById('btn-principal').textContent = 'Finalizar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-finalizar';
   document.getElementById('btn-reiniciar').style.display = 'none';
+  document.getElementById('btn-maps').style.display = 'flex';
 
   salvarEstadoAtual();
 }
 
+function abrirGoogleMaps() {
+  if (ultimaPosicao) {
+    window.location.href = 'geo:' + ultimaPosicao.lat + ',' + ultimaPosicao.lon + '?q=' + ultimaPosicao.lat + ',' + ultimaPosicao.lon;
+  } else {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      const { latitude, longitude } = pos.coords;
+      window.location.href = 'geo:' + latitude + ',' + longitude + '?q=' + latitude + ',' + longitude;
+    }, function() {
+      alert('Não consegui pegar sua localização agora pra abrir o mapa.');
+    });
+  }
+}
+
 function finalizarCorrida() {
   if (watchId !== null) {
-    navigator.geolocation.clearWatch(watchId);
+    if (window.BackgroundGeolocationPlugin) {
+      window.BackgroundGeolocationPlugin.removeWatcher({ id: watchId });
+    } else {
+      navigator.geolocation.clearWatch(watchId);
+    }
     watchId = null;
   }
   corridaAtiva = false;
+
+  if (estado.tempoTotalS > 0 || estado.valorTotal > 0) {
+    abrirModalPagamento();
+  } else {
+    concluirFinalizacao(null);
+  }
+}
+
+function abrirModalPagamento() {
+  document.getElementById('pagamento-valor').textContent = 'R$ ' + formatarMoeda(estado.valorTotal);
+  document.getElementById('pagamento-pix-area').style.display = 'none';
+  document.getElementById('modal-pagamento').style.display = 'flex';
+}
+
+function escolherPagamento(forma) {
+  if (forma === 'pix') {
+    if (!CONFIG.chavePix) {
+      alert('Cadastre sua chave Pix nas configurações antes de usar essa opção.');
+      return;
+    }
+    const payload = gerarPayloadPix(CONFIG.chavePix, estado.valorTotal, 'TAXIMETRO', 'BRASIL');
+    document.getElementById('pagamento-pix-area').style.display = 'block';
+    document.getElementById('pagamento-pix-codigo').value = payload;
+    document.getElementById('pix-qrcode-taxi').innerHTML = '';
+    if (window.QRCodeLib) {
+      window.QRCodeLib.toCanvas(document.createElement('canvas'), payload, { width: 220 }, function(err, canvas) {
+        if (!err) document.getElementById('pix-qrcode-taxi').appendChild(canvas);
+      });
+    }
+  } else {
+    concluirFinalizacao(forma);
+  }
+}
+
+function copiarCodigoPixTaxi() {
+  const campo = document.getElementById('pagamento-pix-codigo');
+  campo.select();
+  document.execCommand('copy');
+}
+
+function concluirFinalizacao(formaPagamento) {
+  document.getElementById('modal-pagamento').style.display = 'none';
 
   if (estado.tempoTotalS > 0 || estado.valorTotal > 0) {
     salvarNoHistorico({
       data: new Date().toISOString(),
       valor: estado.valorTotal,
       distanciaKm: estado.distanciaTotalKm,
-      tempoS: estado.tempoTotalS
+      tempoS: estado.tempoTotalS,
+      trajeto: document.getElementById('campo-de-para').value.trim(),
+      formaPagamento: formaPagamento
     });
   }
 
   document.getElementById('btn-principal').textContent = 'Iniciar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-iniciar';
   document.getElementById('btn-reiniciar').style.display = 'block';
+  document.getElementById('btn-maps').style.display = 'none';
   atualizarTela('Corrida finalizada', 'status-parado-app');
 
   salvarEstadoAtual();
@@ -508,21 +1029,76 @@ function formatarDataHistorico(isoString) {
   return `${doisDig(d.getDate())}/${doisDig(d.getMonth() + 1)} às ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}`;
 }
 
-function renderizarHistorico() {
+const ROTULO_PAGAMENTO = { dinheiro: 'Dinheiro', cartao: 'Cartão', pix: 'Pix' };
+
+let filtroPeriodoAtual = 'tudo';
+
+function inicioDoDia(data) {
+  const d = new Date(data);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function historicoFiltrado() {
   const historico = obterHistorico();
+  if (filtroPeriodoAtual === 'tudo') return historico;
+
+  const agora = new Date();
+  let limiteInicio = null;
+  let limiteFim = null;
+
+  if (filtroPeriodoAtual === '7' || filtroPeriodoAtual === '15') {
+    const dias = parseInt(filtroPeriodoAtual, 10);
+    limiteInicio = inicioDoDia(new Date(agora.getTime() - dias * 24 * 60 * 60 * 1000));
+  } else if (filtroPeriodoAtual === 'mes') {
+    limiteInicio = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  } else if (filtroPeriodoAtual === 'personalizado') {
+    const de = document.getElementById('filtro-data-de').value;
+    const ate = document.getElementById('filtro-data-ate').value;
+    if (de) limiteInicio = new Date(de + 'T00:00:00');
+    if (ate) limiteFim = new Date(ate + 'T23:59:59');
+  }
+
+  return historico.filter(function(item) {
+    const dataItem = new Date(item.data);
+    if (limiteInicio && dataItem < limiteInicio) return false;
+    if (limiteFim && dataItem > limiteFim) return false;
+    return true;
+  });
+}
+
+function aplicarFiltroPeriodo(nome) {
+  filtroPeriodoAtual = nome;
+  document.querySelectorAll('.filtro-btn').forEach(function(btn) {
+    btn.setAttribute('data-ativo', btn.getAttribute('data-filtro-btn') === nome ? 'true' : 'false');
+  });
+  document.getElementById('filtro-personalizado-campos').style.display = nome === 'personalizado' ? 'flex' : 'none';
+  renderizarHistorico();
+}
+
+function renderizarHistorico() {
+  const historico = historicoFiltrado();
   const container = document.getElementById('lista-historico');
+  const resumo = document.getElementById('historico-resumo');
+
+  const totalValor = historico.reduce(function(soma, item) { return soma + item.valor; }, 0);
+  resumo.innerHTML = `<span>${historico.length} corrida${historico.length === 1 ? '' : 's'}</span><strong>R$ ${formatarMoeda(totalValor)}</strong>`;
 
   if (!historico.length) {
-    container.innerHTML = '<p class="historico-vazio">Nenhuma corrida finalizada ainda.</p>';
+    container.innerHTML = '<p class="historico-vazio">Nenhuma corrida nesse período.</p>';
     return;
   }
 
   container.innerHTML = historico.map(function(item) {
+    const trajetoHtml = item.trajeto ? `<div class="historico-detalhes">${escapeHtmlTexto(item.trajeto)}</div>` : '';
+    const formaHtml = item.formaPagamento ? `<span class="historico-forma">${ROTULO_PAGAMENTO[item.formaPagamento] || item.formaPagamento}</span>` : '';
     return `
       <div class="item-historico">
         <div>
           <div class="historico-data">${formatarDataHistorico(item.data)}</div>
+          ${trajetoHtml}
           <div class="historico-detalhes">${item.distanciaKm.toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS)}</div>
+          ${formaHtml}
         </div>
         <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
       </div>
@@ -530,8 +1106,60 @@ function renderizarHistorico() {
   }).join('');
 }
 
+function exportarHistoricoPdf() {
+  if (!window.jsPDFLib) {
+    alert('Exportação de PDF só funciona no aplicativo instalado.');
+    return;
+  }
+  const historico = historicoFiltrado();
+  if (!historico.length) {
+    alert('Não há corridas nesse período pra exportar.');
+    return;
+  }
+
+  const doc = new window.jsPDFLib();
+  const totalValor = historico.reduce(function(soma, item) { return soma + item.valor; }, 0);
+
+  doc.setFontSize(16);
+  doc.text('Taxímetro — Histórico de corridas', 14, 18);
+  doc.setFontSize(10);
+  doc.text('Gerado em ' + new Date().toLocaleString('pt-BR'), 14, 25);
+  doc.text(historico.length + ' corrida(s) — Total: R$ ' + formatarMoeda(totalValor), 14, 31);
+
+  let y = 42;
+  doc.setFontSize(9);
+  doc.text('Data', 14, y);
+  doc.text('Trajeto', 42, y);
+  doc.text('Km', 118, y);
+  doc.text('Tempo', 135, y);
+  doc.text('Pagto', 158, y);
+  doc.text('Valor', 178, y);
+  y += 4;
+  doc.line(14, y, 196, y);
+  y += 5;
+
+  historico.forEach(function(item) {
+    if (y > 280) { doc.addPage(); y = 18; }
+    doc.text(formatarDataHistorico(item.data), 14, y);
+    doc.text((item.trajeto || '-').substring(0, 32), 42, y);
+    doc.text(item.distanciaKm.toFixed(2).replace('.', ','), 118, y);
+    doc.text(formatarTempo(item.tempoS), 135, y);
+    doc.text(ROTULO_PAGAMENTO[item.formaPagamento] || '-', 158, y);
+    doc.text('R$ ' + formatarMoeda(item.valor), 178, y);
+    y += 6;
+  });
+
+  doc.save('taximetro-historico.pdf');
+}
+
+function escapeHtmlTexto(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 function abrirHistorico() {
-  renderizarHistorico();
+  aplicarFiltroPeriodo('tudo');
   document.getElementById('tela-medidor').classList.remove('ativa');
   document.getElementById('tela-historico').classList.add('ativa');
 }
