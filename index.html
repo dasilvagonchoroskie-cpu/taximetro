@@ -969,7 +969,7 @@ function abrirGoogleMaps() {
     return;
   }
 
-  function abrirRota(coords) {
+  function enderecoDoSite(coords) {
     let url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving'
             + '&destination=' + encodeURIComponent(destino);
     if (coords) {
@@ -979,7 +979,30 @@ function abrirGoogleMaps() {
       url += '&origin=' + encodeURIComponent(origem);
     }
     // Sem nenhum dos dois, o proprio Maps usa a localizacao atual dele.
-    window.location.href = url;
+    return url;
+  }
+
+  function abrirRota(coords) {
+    const enderecoSite = enderecoDoSite(coords);
+
+    if (!estaNoApp()) {
+      // Site de teste no navegador: abre a pagina do Google Maps mesmo.
+      window.location.href = enderecoSite;
+      return;
+    }
+
+    // Dentro do app instalado: chama o APLICATIVO do Google Maps direto,
+    // ja no modo de navegacao (voz e setas), sem passar pelo navegador.
+    // Nesse modo o ponto de partida e sempre onde o carro esta agora,
+    // que e o certo pra uma corrida em andamento.
+    window.location.href = 'google.navigation:q=' + encodeURIComponent(destino) + '&mode=d';
+
+    // Rede de seguranca: se o aplicativo do Maps nao abrir (nao esta
+    // instalado, por exemplo), a tela do taximetro continua visivel.
+    // Nesse caso, poucos segundos depois, cai no endereco normal.
+    setTimeout(function() {
+      if (!document.hidden) window.location.href = enderecoSite;
+    }, 2500);
   }
 
   if (ultimaPosicao) {
@@ -991,6 +1014,16 @@ function abrirGoogleMaps() {
       abrirRota(null);
     }, { timeout: 8000 });
   }
+}
+
+// Diz se estamos rodando dentro do aplicativo instalado (e nao no site
+// de teste aberto pelo navegador).
+function estaNoApp() {
+  const cap = window.Capacitor;
+  if (!cap) return false;
+  if (typeof cap.isNativePlatform === 'function') return cap.isNativePlatform();
+  if (typeof cap.isNative !== 'undefined') return !!cap.isNative;
+  return !!cap.Plugins;
 }
 
 function abrirMapaNaPosicaoAtual() {
