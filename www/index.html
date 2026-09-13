@@ -296,6 +296,18 @@
     color: var(--texto-fraco);
     margin-bottom: 8px;
   }
+  .campo select {
+    width: 100%;
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    color: var(--texto);
+    padding: 14px;
+    font-size: 1rem;
+    border-radius: 4px;
+    font-family: inherit;
+    margin-bottom: 8px;
+  }
+  .campo-erro { font-size: 0.8125rem; color: var(--alerta); margin-top: 6px; }
   .campo input {
     width: 100%;
     background: var(--painel);
@@ -489,7 +501,7 @@ function salvarAparenciaNoAparelho() {
 
   <div class="controles">
     <button id="btn-principal" class="btn-grande btn-iniciar" onclick="alternarCorrida()">Iniciar corrida</button>
-    <button id="btn-maps" class="btn-secundario btn-maps" onclick="abrirGoogleMaps()" style="display:none;">
+    <button id="btn-maps" class="btn-secundario btn-maps" onclick="abrirNavegacao()" style="display:none;">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-4px; margin-right:6px;"><path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>
       <span id="btn-maps-texto">Abrir no Google Maps</span>
     </button>
@@ -588,7 +600,15 @@ function salvarAparenciaNoAparelho() {
     </div>
     <div class="campo">
       <label>Chave Pix (pra receber pagamento)</label>
-      <input type="text" id="cfg-chave-pix" placeholder="Telefone, e-mail, CPF ou chave aleatória">
+      <select id="cfg-tipo-chave-pix" onchange="conferirChavePix()">
+        <option value="telefone">Telefone</option>
+        <option value="cpf">CPF</option>
+        <option value="cnpj">CNPJ</option>
+        <option value="email">E-mail</option>
+        <option value="aleatoria">Chave aleatória</option>
+      </select>
+      <input type="text" id="cfg-chave-pix" placeholder="Digite a chave" oninput="conferirChavePix()">
+      <p id="cfg-chave-pix-ajuda" class="campo-ajuda"></p>
     </div>
     <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
     <p id="config-msg" class="config-msg"></p>
@@ -691,6 +711,9 @@ function preencherFormularioConfig() {
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
   document.getElementById('cfg-chave-pix').value = CONFIG.chavePix || '';
+  document.getElementById('cfg-tipo-chave-pix').value =
+    CONFIG.tipoChavePix || detectarTipoChavePix(CONFIG.chavePix);
+  conferirChavePix();
 }
 
 function salvarConfiguracoes() {
@@ -702,14 +725,22 @@ function salvarConfiguracoes() {
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
-  const chavePix = document.getElementById('cfg-chave-pix').value.trim();
+  const tipoChavePix = document.getElementById('cfg-tipo-chave-pix').value;
+  const resultadoChave = normalizarChavePix(tipoChavePix, document.getElementById('cfg-chave-pix').value);
+  if (resultadoChave.erro) {
+    conferirChavePix();
+    const msgErro = document.getElementById('config-msg');
+    msgErro.textContent = 'Chave Pix: ' + resultadoChave.erro;
+    return;
+  }
+  const chavePix = resultadoChave.chave;
 
   CONFIG = {
     bandeiradaDia, bandeiradaNoite,
     horaInicioNoite: isNaN(horaInicioNoite) ? CONFIG_PADRAO.horaInicioNoite : horaInicioNoite,
     horaFimNoite: isNaN(horaFimNoite) ? CONFIG_PADRAO.horaFimNoite : horaFimNoite,
     kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
-    taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix
+    taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix, tipoChavePix
   };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
 
@@ -777,6 +808,14 @@ function distanciaHaversineMetros(lat1, lon1, lat2, lon2) {
 
 // Distância mínima (em metros) pra considerar como movimento real, não ruído do GPS parado
 const DISTANCIA_MINIMA_RUIDO_M = 3;
+// Abaixo dessa velocidade o carro esta parado de verdade (nem passo de
+// gente). Serve pra separar transito devagar de tremida do GPS parado.
+const VELOCIDADE_PARADO_KMH = 2.5;
+// Acumulador de trecho: guarda os pedacinhos curtos ate darem uma
+// distancia confiavel. Sem isso, andando devagar cada pedacinho era
+// menor que o ruido do GPS e ia pro lixo — a corrida perdia distancia.
+let bufferDistanciaM = 0;
+let bufferTempoS = 0;
 
 // ===================== Pix (payload EMV / BR Code) =====================
 function crc16Pix(payload) {
@@ -792,6 +831,80 @@ function crc16Pix(payload) {
 
 function campoPix(id, valor) {
   return id + String(valor.length).padStart(2, '0') + valor;
+}
+
+// O banco so aceita a chave no formato exato do Pix. Telefone, por
+// exemplo, TEM que ir como +55 e o numero com DDD — digitado como
+// "64 99647-2794" o QR sai invalido e o app do banco recusa. Era esse
+// o erro na hora de pagar.
+function normalizarChavePix(tipo, valor) {
+  const bruto = String(valor || '').trim();
+  if (!bruto) return { chave: '', erro: '' };
+  const numeros = bruto.replace(/\D/g, '');
+
+  if (tipo === 'email') {
+    const email = bruto.toLowerCase();
+    if (email.indexOf('@') < 1 || email.lastIndexOf('.') < email.indexOf('@')) {
+      return { chave: '', erro: 'E-mail incompleto.' };
+    }
+    return { chave: email, erro: '' };
+  }
+  if (tipo === 'cpf') {
+    if (numeros.length !== 11) return { chave: '', erro: 'CPF tem 11 números.' };
+    return { chave: numeros, erro: '' };
+  }
+  if (tipo === 'cnpj') {
+    if (numeros.length !== 14) return { chave: '', erro: 'CNPJ tem 14 números.' };
+    return { chave: numeros, erro: '' };
+  }
+  if (tipo === 'aleatoria') {
+    const chave = bruto.toLowerCase();
+    if (chave.replace(/-/g, '').length !== 32) {
+      return { chave: '', erro: 'A chave aleatória tem 32 letras e números.' };
+    }
+    return { chave: chave, erro: '' };
+  }
+  // telefone
+  let n = numeros;
+  if (n.length > 11 && n.indexOf('55') === 0) n = n.substring(2);
+  if (n.length !== 10 && n.length !== 11) {
+    return { chave: '', erro: 'Telefone: DDD + número (10 ou 11 números).' };
+  }
+  return { chave: '+55' + n, erro: '' };
+}
+
+// Pra quem ja tinha a chave salva na versao anterior: adivinha o tipo
+// pra ele nao ter que escolher do zero.
+function detectarTipoChavePix(valor) {
+  const bruto = String(valor || '').trim();
+  if (!bruto) return 'telefone';
+  if (bruto.indexOf('@') !== -1) return 'email';
+  if (bruto.replace(/-/g, '').length === 32 && /[a-z]/i.test(bruto)) return 'aleatoria';
+  const numeros = bruto.replace(/\D/g, '');
+  if (numeros.length === 14) return 'cnpj';
+  if (numeros.length === 11) return numeros.charAt(2) === '9' ? 'telefone' : 'cpf';
+  return 'telefone';
+}
+
+// Mostra na hora como a chave vai sair dentro do QR Code.
+function conferirChavePix() {
+  const ajuda = document.getElementById('cfg-chave-pix-ajuda');
+  if (!ajuda) return { chave: '', erro: '' };
+  const tipo = document.getElementById('cfg-tipo-chave-pix').value;
+  const digitado = document.getElementById('cfg-chave-pix').value;
+  const r = normalizarChavePix(tipo, digitado);
+
+  if (!digitado.trim()) {
+    ajuda.className = 'campo-ajuda';
+    ajuda.textContent = 'Sem chave, a opção Pix não gera o QR Code.';
+  } else if (r.erro) {
+    ajuda.className = 'campo-erro';
+    ajuda.textContent = r.erro;
+  } else {
+    ajuda.className = 'campo-ajuda';
+    ajuda.textContent = 'No QR Code vai assim: ' + r.chave;
+  }
+  return r;
 }
 
 function gerarPayloadPix(chave, valor, nome, cidade) {
@@ -857,26 +970,37 @@ function processarNovaPosicao(pos) {
     const tempoDecorridoS = (agoraMs - ultimaPosicao.tempoMs) / 1000;
 
     if (tempoDecorridoS > 0 && tempoDecorridoS < 120) { // ignora saltos absurdos de tempo (celular desligado, app matado pelo sistema etc.) — 120s da margem pra atualizações em segundo plano, que naturalmente vêm mais espaçadas
-      const velocidadeKmh = (distanciaM / 1000) / (tempoDecorridoS / 3600);
+      // A velocidade que o próprio GPS informa é bem mais confiável que
+      // a calculada entre dois pontos, que treme junto com o erro do
+      // aparelho. Quando o aparelho não informa, cai na calculada.
+      const velocidadeGpsKmh = (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0)
+        ? pos.coords.speed * 3.6
+        : null;
+      const velocidadeCalculadaKmh = (distanciaM / 1000) / (tempoDecorridoS / 3600);
+      const velocidadeKmh = velocidadeGpsKmh !== null ? velocidadeGpsKmh : velocidadeCalculadaKmh;
 
       estado.tempoTotalS += tempoDecorridoS;
 
-      if (distanciaM >= DISTANCIA_MINIMA_RUIDO_M && velocidadeKmh >= CONFIG.limiarVelocidadeKmh) {
-        // em movimento de verdade
-        const distanciaKmEsseTrecho = distanciaM / 1000;
-        const distanciaAntesDesseTrecho = estado.distanciaTotalKm;
-        estado.distanciaTotalKm += distanciaKmEsseTrecho;
+      const andando = velocidadeKmh >= VELOCIDADE_PARADO_KMH || distanciaM >= DISTANCIA_MINIMA_RUIDO_M;
 
-        // só cobra a partir do km configurado como "incluído na bandeirada" —
-        // calcula certo mesmo quando um único trecho cruza essa marca no meio
-        const kmIncluido = CONFIG.kmIncluidoNaBandeirada || 0;
-        const kmCobravelNesseTrecho = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntesDesseTrecho));
-        estado.valorTotal += kmCobravelNesseTrecho * CONFIG.taxaKm;
-
-        atualizarTela('Em movimento', 'status-movimento');
+      if (andando) {
+        // Guarda o pedaço no acumulador em vez de jogar fora.
+        bufferDistanciaM += distanciaM;
+        bufferTempoS += tempoDecorridoS;
+        if (bufferDistanciaM >= DISTANCIA_MINIMA_RUIDO_M) {
+          fecharTrechoRodado();
+        }
+        atualizarTela(
+          velocidadeKmh >= CONFIG.limiarVelocidadeKmh ? 'Em movimento' : 'Devagar / trânsito',
+          velocidadeKmh >= CONFIG.limiarVelocidadeKmh ? 'status-movimento' : 'status-esperando'
+        );
       } else {
-        // parado ou movimento pequeno demais (ruído do GPS)
-        estado.valorTotal += (tempoDecorridoS / 60) * CONFIG.taxaEspera;
+        // Parado de verdade: o que estava no acumulador era só tremida
+        // do GPS, mas o tempo guardado nele é tempo de corrida e tem que
+        // ser pago como espera.
+        estado.valorTotal += ((tempoDecorridoS + bufferTempoS) / 60) * CONFIG.taxaEspera;
+        bufferDistanciaM = 0;
+        bufferTempoS = 0;
         atualizarTela('Parado / esperando', 'status-esperando');
       }
 
@@ -885,6 +1009,28 @@ function processarNovaPosicao(pos) {
   }
 
   ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs };
+}
+
+// Fecha o trecho acumulado: soma a distância no odômetro e cobra o que
+// for MAIOR entre a distância rodada e o tempo gasto nela. Nunca os
+// dois juntos — isso seria cobrar duas vezes o mesmo pedaço da corrida.
+function fecharTrechoRodado() {
+  if (bufferDistanciaM <= 0 && bufferTempoS <= 0) return;
+
+  const distanciaAntes = estado.distanciaTotalKm;
+  estado.distanciaTotalKm += bufferDistanciaM / 1000;
+
+  // só cobra a partir do km configurado como "incluído na bandeirada" —
+  // calcula certo mesmo quando um único trecho cruza essa marca no meio
+  const kmIncluido = CONFIG.kmIncluidoNaBandeirada || 0;
+  const kmCobravel = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntes));
+
+  const porDistancia = kmCobravel * CONFIG.taxaKm;
+  const porTempo = (bufferTempoS / 60) * CONFIG.taxaEspera;
+  estado.valorTotal += Math.max(porDistancia, porTempo);
+
+  bufferDistanciaM = 0;
+  bufferTempoS = 0;
 }
 
 function erroGps(erro) {
@@ -919,6 +1065,8 @@ function iniciarCorrida() {
     ultimaAtualizacaoMs: Date.now()
   };
   ultimaPosicao = null;
+  bufferDistanciaM = 0;
+  bufferTempoS = 0;
   corridaAtiva = true;
 
   atualizarTela('Localizando...', 'status-parado-app');
@@ -961,61 +1109,36 @@ function iniciarCorrida() {
 // "Maps URLs" do Google) — quem calcula a rota e o proprio Google Maps
 // do celular. Nao precisa de servidor nosso, nem de chave de API, nem
 // de cadastro: o app continua 100% sem servidor.
-function abrirGoogleMaps() {
+function abrirNavegacao() {
   const destino = document.getElementById('campo-destino').value.trim();
-  const origem = document.getElementById('campo-origem').value.trim();
 
-  // Sem destino digitado: comportamento antigo, so mostra onde ele esta.
+  // Sem destino digitado: so mostra no mapa onde ele esta.
   if (!destino) {
     abrirMapaNaPosicaoAtual();
     return;
   }
 
-  function enderecoDoSite(coords) {
-    let url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving'
-            + '&destination=' + encodeURIComponent(destino);
-    if (coords) {
-      // Ponto de partida exato do GPS — melhor que o nome da cidade.
-      url += '&origin=' + coords.lat + ',' + coords.lon;
-    } else if (origem) {
-      url += '&origin=' + encodeURIComponent(origem);
+  const consulta = encodeURIComponent(destino);
+
+  if (!estaNoApp()) {
+    // Site de teste no navegador: endereco normal do Waze.
+    window.location.href = 'https://waze.com/ul?q=' + consulta + '&navigate=yes';
+    return;
+  }
+
+  // Dentro do app instalado: chama o APLICATIVO do Waze direto, ja
+  // navegando. O Waze sempre parte de onde o carro esta agora, que e o
+  // certo numa corrida em andamento.
+  window.location.href = 'waze://?q=' + consulta + '&navigate=yes';
+
+  // Rede de seguranca: se o Waze nao abrir (nao instalado), a tela do
+  // taximetro continua visivel. Nesse caso cai na navegacao do Google
+  // Maps, pra ele nunca ficar sem rota no meio do trabalho.
+  setTimeout(function() {
+    if (!document.hidden) {
+      window.location.href = 'google.navigation:q=' + consulta + '&mode=d';
     }
-    // Sem nenhum dos dois, o proprio Maps usa a localizacao atual dele.
-    return url;
-  }
-
-  function abrirRota(coords) {
-    const enderecoSite = enderecoDoSite(coords);
-
-    if (!estaNoApp()) {
-      // Site de teste no navegador: abre a pagina do Google Maps mesmo.
-      window.location.href = enderecoSite;
-      return;
-    }
-
-    // Dentro do app instalado: chama o APLICATIVO do Google Maps direto,
-    // ja no modo de navegacao (voz e setas), sem passar pelo navegador.
-    // Nesse modo o ponto de partida e sempre onde o carro esta agora,
-    // que e o certo pra uma corrida em andamento.
-    window.location.href = 'google.navigation:q=' + encodeURIComponent(destino) + '&mode=d';
-
-    // Rede de seguranca: se o aplicativo do Maps nao abrir (nao esta
-    // instalado, por exemplo), a tela do taximetro continua visivel.
-    // Nesse caso, poucos segundos depois, cai no endereco normal.
-    setTimeout(function() {
-      if (!document.hidden) window.location.href = enderecoSite;
-    }, 2500);
-  }
-
-  if (ultimaPosicao) {
-    abrirRota(ultimaPosicao);
-  } else {
-    navigator.geolocation.getCurrentPosition(function(pos) {
-      abrirRota({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-    }, function() {
-      abrirRota(null);
-    }, { timeout: 8000 });
-  }
+  }, 2500);
 }
 
 // Diz se estamos rodando dentro do aplicativo instalado (e nao no site
@@ -1047,14 +1170,17 @@ function atualizarBotaoMaps() {
   if (!alvo) return;
   const destino = document.getElementById('campo-destino').value.trim();
   if (!destino) {
-    alvo.textContent = 'Abrir no Google Maps';
+    alvo.textContent = 'Abrir o mapa';
   } else {
-    const nome = destino.length > 20 ? destino.substring(0, 20) + '...' : destino;
-    alvo.textContent = 'Ver rota até ' + nome;
+    const nome = destino.length > 18 ? destino.substring(0, 18) + '...' : destino;
+    alvo.textContent = 'Ir até ' + nome + ' no Waze';
   }
 }
 
 function finalizarCorrida() {
+  // O último pedaço rodado não pode ficar pra trás no acumulador.
+  fecharTrechoRodado();
+
   if (watchId !== null) {
     if (window.BackgroundGeolocationPlugin) {
       window.BackgroundGeolocationPlugin.removeWatcher({ id: watchId });
@@ -1084,14 +1210,36 @@ function escolherPagamento(forma) {
       alert('Cadastre sua chave Pix nas configurações antes de usar essa opção.');
       return;
     }
-    const payload = gerarPayloadPix(CONFIG.chavePix, estado.valorTotal, 'TAXIMETRO', 'BRASIL');
+    // Garante o formato certo mesmo pra chave salva na versão antiga.
+    const chaveOk = normalizarChavePix(
+      CONFIG.tipoChavePix || detectarTipoChavePix(CONFIG.chavePix), CONFIG.chavePix
+    );
+    if (chaveOk.erro || !chaveOk.chave) {
+      alert('A chave Pix salva está fora do formato que o banco aceita (' +
+            (chaveOk.erro || 'chave vazia') +
+            '). Abra as configurações, escolha o tipo da chave e salve de novo.');
+      return;
+    }
+
+    const payload = gerarPayloadPix(chaveOk.chave, estado.valorTotal, 'TAXIMETRO', 'BRASIL');
     document.getElementById('pagamento-pix-area').style.display = 'block';
     document.getElementById('pagamento-pix-codigo').value = payload;
-    document.getElementById('pix-qrcode-taxi').innerHTML = '';
-    if (window.QRCodeLib) {
+    const caixaQr = document.getElementById('pix-qrcode-taxi');
+    caixaQr.innerHTML = '';
+    try {
+      if (!window.QRCodeLib || typeof window.QRCodeLib.toCanvas !== 'function') {
+        throw new Error('a parte que desenha o QR Code não carregou');
+      }
       window.QRCodeLib.toCanvas(document.createElement('canvas'), payload, { width: 220 }, function(err, canvas) {
-        if (!err) document.getElementById('pix-qrcode-taxi').appendChild(canvas);
+        if (err) {
+          caixaQr.innerHTML = '<p class="campo-erro">Não consegui desenhar o QR Code. Use o botão de copiar o código.</p>';
+          return;
+        }
+        caixaQr.appendChild(canvas);
       });
+    } catch (e) {
+      caixaQr.innerHTML = '<p class="campo-erro">QR Code indisponível (' +
+        ((e && e.message) || e) + '). Use o botão de copiar o código.</p>';
     }
   } else {
     concluirFinalizacao(forma);
@@ -1373,6 +1521,8 @@ function montarTrajeto() {
 function reiniciarCorrida() {
   estado = { valorTotal: 0, distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
   ultimaPosicao = null;
+  bufferDistanciaM = 0;
+  bufferTempoS = 0;
   document.getElementById('campo-origem').value = '';
   document.getElementById('campo-destino').value = '';
   document.getElementById('btn-reiniciar').style.display = 'none';
