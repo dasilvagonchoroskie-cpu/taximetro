@@ -36,6 +36,7 @@
     border-bottom: 1px solid var(--borda);
   }
   .cabecalho h1 { font-size: 1.125rem; font-weight: 600; }
+  .marca-app { font-size: 0.6875rem; color: var(--texto-fraco); margin-top: 2px; letter-spacing: 0.02em; }
   .btn-engrenagem {
     background: none;
     border: none;
@@ -121,6 +122,7 @@
     cursor: pointer;
     border-radius: 4px;
   }
+  .btn-maps { display: flex; align-items: center; justify-content: center; }
 
   /* ---------- Configurações ---------- */
   .config-corpo { flex: 1; padding: 20px; overflow-y: auto; }
@@ -192,7 +194,10 @@
 <!-- ===================== TELA DO TAXÍMETRO ===================== -->
 <div id="tela-medidor" class="tela ativa">
   <div class="cabecalho">
-    <h1>Taxímetro</h1>
+    <div>
+      <h1>Taxímetro</h1>
+      <p class="marca-app">Fortaleza Digital</p>
+    </div>
     <div style="display:flex; gap:4px;">
       <button class="btn-engrenagem" onclick="abrirHistorico()" aria-label="Histórico de corridas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4.5L3 8"/><path d="M12 7v5l3 3"/></svg>
@@ -225,6 +230,10 @@
 
   <div class="controles">
     <button id="btn-principal" class="btn-grande btn-iniciar" onclick="alternarCorrida()">Iniciar corrida</button>
+    <button id="btn-maps" class="btn-secundario btn-maps" onclick="abrirGoogleMaps()" style="display:none;">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-4px; margin-right:6px;"><path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>
+      Abrir no Google Maps
+    </button>
     <button id="btn-reiniciar" class="btn-secundario" onclick="reiniciarCorrida()" style="display:none;">Zerar e começar outra corrida</button>
   </div>
 </div>
@@ -459,8 +468,22 @@ function iniciarCorrida() {
   document.getElementById('btn-principal').textContent = 'Finalizar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-finalizar';
   document.getElementById('btn-reiniciar').style.display = 'none';
+  document.getElementById('btn-maps').style.display = 'flex';
 
   salvarEstadoAtual();
+}
+
+function abrirGoogleMaps() {
+  if (ultimaPosicao) {
+    window.location.href = 'geo:' + ultimaPosicao.lat + ',' + ultimaPosicao.lon + '?q=' + ultimaPosicao.lat + ',' + ultimaPosicao.lon;
+  } else {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      const { latitude, longitude } = pos.coords;
+      window.location.href = 'geo:' + latitude + ',' + longitude + '?q=' + latitude + ',' + longitude;
+    }, function() {
+      alert('Não consegui pegar sua localização agora pra abrir o mapa.');
+    });
+  }
 }
 
 function finalizarCorrida() {
@@ -482,6 +505,7 @@ function finalizarCorrida() {
   document.getElementById('btn-principal').textContent = 'Iniciar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-iniciar';
   document.getElementById('btn-reiniciar').style.display = 'block';
+  document.getElementById('btn-maps').style.display = 'none';
   atualizarTela('Corrida finalizada', 'status-parado-app');
 
   salvarEstadoAtual();
