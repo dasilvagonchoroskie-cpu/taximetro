@@ -996,7 +996,11 @@ function processarNovaPosicao(pos) {
         // Parado de verdade: o que estava no acumulador era só tremida
         // do GPS, mas o tempo guardado nele é tempo de corrida e tem que
         // ser pago como espera.
-        estado.valorTotal += ((tempoDecorridoS + bufferTempoS) / 60) * CONFIG.taxaEspera;
+        const segundosParado = tempoDecorridoS + bufferTempoS;
+        const cobrancaParado = (segundosParado / 60) * CONFIG.taxaEspera;
+        estado.valorEspera = (estado.valorEspera || 0) + cobrancaParado;
+        estado.tempoParadoS = (estado.tempoParadoS || 0) + segundosParado;
+        estado.valorTotal += cobrancaParado;
         bufferDistanciaM = 0;
         bufferTempoS = 0;
         atualizarTela('Parado / esperando', 'status-esperando');
@@ -1025,7 +1029,17 @@ function fecharTrechoRodado() {
 
   const porDistancia = kmCobravel * CONFIG.taxaKm;
   const porTempo = (bufferTempoS / 60) * CONFIG.taxaEspera;
-  estado.valorTotal += Math.max(porDistancia, porTempo);
+
+  if (porDistancia >= porTempo) {
+    estado.valorDistancia = (estado.valorDistancia || 0) + porDistancia;
+    estado.valorTotal += porDistancia;
+  } else {
+    // Trecho tão devagar que o minuto rende mais que o quilômetro:
+    // cobra o tempo, como manda o taxímetro.
+    estado.valorEspera = (estado.valorEspera || 0) + porTempo;
+    estado.tempoParadoS = (estado.tempoParadoS || 0) + bufferTempoS;
+    estado.valorTotal += porTempo;
+  }
 
   bufferDistanciaM = 0;
   bufferTempoS = 0;
@@ -1056,8 +1070,13 @@ function iniciarCorrida() {
     return;
   }
 
+  const bandeirada = bandeiradaAtual();
   estado = {
-    valorTotal: bandeiradaAtual(),
+    valorTotal: bandeirada,
+    bandeirada: bandeirada,
+    valorDistancia: 0,
+    valorEspera: 0,
+    tempoParadoS: 0,
     distanciaTotalKm: 0,
     tempoTotalS: 0,
     ultimaAtualizacaoMs: Date.now()
@@ -1082,7 +1101,12 @@ function iniciarCorrida() {
       distanceFilter: 0
     }, function(location, erro) {
       if (erro) { erroGps(erro); return; }
-      processarNovaPosicao({ coords: { latitude: location.latitude, longitude: location.longitude } });
+      processarNovaPosicao({ coords: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        speed: location.speed,       // m/s medidos pelo próprio GPS
+        accuracy: location.accuracy  // margem de erro em metros
+      } });
     }).then(function(id) { watchId = id; });
   } else {
     // Testando num navegador comum: usa a API padrão da web
@@ -1259,6 +1283,13 @@ function concluirFinalizacao(formaPagamento) {
       valor: estado.valorTotal,
       distanciaKm: estado.distanciaTotalKm,
       tempoS: estado.tempoTotalS,
+      bandeirada: estado.bandeirada || 0,
+      valorDistancia: estado.valorDistancia || 0,
+      valorEspera: estado.valorEspera || 0,
+      tempoParadoS: estado.tempoParadoS || 0,
+      taxaKmUsada: CONFIG.taxaKm,
+      taxaEsperaUsada: CONFIG.taxaEspera,
+      kmIncluidoUsado: CONFIG.kmIncluidoNaBandeirada || 0,
       trajeto: montarTrajeto(),
       origem: document.getElementById('campo-origem').value.trim(),
       destino: document.getElementById('campo-destino').value.trim(),
@@ -1355,6 +1386,22 @@ function aplicarFiltroPeriodo(nome) {
   renderizarHistorico();
 }
 
+// Abre a conta da corrida: de onde veio cada pedaço do valor. Serve pra
+// conferir na hora, sem precisar refazer nada no papel.
+function detalharConta(item) {
+  if (typeof item.bandeirada !== 'number') return '';
+  const kmIncluido = item.kmIncluidoUsado || 0;
+  const kmCobrados = Math.max(0, Number(item.distanciaKm || 0) - kmIncluido);
+  const partes = ['bandeirada R$ ' + formatarMoeda(item.bandeirada)];
+  if (item.valorDistancia > 0) {
+    partes.push(kmCobrados.toFixed(2).replace('.', ',') + ' km R$ ' + formatarMoeda(item.valorDistancia));
+  }
+  if (item.valorEspera > 0) {
+    partes.push('parado ' + formatarTempo(item.tempoParadoS || 0) + ' R$ ' + formatarMoeda(item.valorEspera));
+  }
+  return '<div class="historico-detalhes">' + escapeHtmlTexto(partes.join('  +  ')) + '</div>';
+}
+
 function renderizarHistorico() {
   const historico = historicoFiltrado();
   const container = document.getElementById('lista-historico');
@@ -1378,6 +1425,7 @@ function renderizarHistorico() {
           <div class="historico-data">${formatarDataHistorico(item.data)}</div>
           ${trajetoHtml}
           <div class="historico-detalhes">${Number(item.distanciaKm || 0).toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS || 0)}</div>
+          ${detalharConta(item)}
           ${formaHtml}
         </div>
         <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
@@ -1517,7 +1565,8 @@ function montarTrajeto() {
 }
 
 function reiniciarCorrida() {
-  estado = { valorTotal: 0, distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
+  estado = { valorTotal: 0, bandeirada: 0, valorDistancia: 0, valorEspera: 0,
+             tempoParadoS: 0, distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
   ultimaPosicao = null;
   bufferDistanciaM = 0;
   bufferTempoS = 0;
