@@ -18,17 +18,8 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-    }
-    signingConfigs {
-        release {
-            storeFile file(System.getenv("TAXIMETRO_KEYSTORE_PATH") ?: "release.keystore")
-            storePassword System.getenv("TAXIMETRO_KEYSTORE_SENHA") ?: ""
-            keyAlias "taximetro"
-            keyPassword System.getenv("TAXIMETRO_KEYSTORE_SENHA") ?: ""
         }
     }
 }

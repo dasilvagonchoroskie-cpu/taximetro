@@ -37,21 +37,27 @@ jobs:
       - name: Permitir execução do Gradle
         run: chmod +x android/gradlew
 
-      - name: Preparar a assinatura digital do app
-        run: echo "${{ secrets.TAXIMETRO_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
-
-      - name: Compilar APK (assinado)
+      - name: Compilar APK de release (ainda sem assinatura)
         working-directory: android
-        env:
-          TAXIMETRO_KEYSTORE_PATH: release.keystore
-          TAXIMETRO_KEYSTORE_SENHA: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
         run: ./gradlew assembleRelease
+
+      - name: Assinar digitalmente o APK
+        id: assinar_apk
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: android/app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.TAXIMETRO_KEYSTORE_BASE64 }}
+          alias: taximetro
+          keyStorePassword: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
+          keyPassword: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
 
       - name: Publicar o APK pronto (como artefato do build)
         uses: actions/upload-artifact@v4
         with:
           name: taximetro-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: ${{ steps.assinar_apk.outputs.signedReleaseFile }}
 
       - name: Publicar o APK como Release (link direto, sem precisar de login)
         uses: softprops/action-gh-release@v2
@@ -59,7 +65,7 @@ jobs:
           tag_name: apk-mais-recente
           name: Taxímetro — versão mais recente
           body: APK gerado automaticamente a cada atualização, assinado digitalmente. Baixe o arquivo .apk abaixo.
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: ${{ steps.assinar_apk.outputs.signedReleaseFile }}
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
