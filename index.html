@@ -471,7 +471,7 @@ function salvarAparenciaNoAparelho() {
     <button id="btn-principal" class="btn-grande btn-iniciar" onclick="alternarCorrida()">Iniciar corrida</button>
     <button id="btn-maps" class="btn-secundario btn-maps" onclick="abrirGoogleMaps()" style="display:none;">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-4px; margin-right:6px;"><path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>
-      Abrir no Google Maps
+      <span id="btn-maps-texto">Abrir no Google Maps</span>
     </button>
     <button id="btn-reiniciar" class="btn-secundario" onclick="reiniciarCorrida()" style="display:none;">Zerar e começar outra corrida</button>
   </div>
@@ -936,7 +936,46 @@ function iniciarCorrida() {
   salvarEstadoAtual();
 }
 
+// Abre o Google Maps ja com a rota tracada ate o destino digitado.
+// Isso e so um endereco de internet montado na hora (o padrao oficial
+// "Maps URLs" do Google) — quem calcula a rota e o proprio Google Maps
+// do celular. Nao precisa de servidor nosso, nem de chave de API, nem
+// de cadastro: o app continua 100% sem servidor.
 function abrirGoogleMaps() {
+  const destino = document.getElementById('campo-destino').value.trim();
+  const origem = document.getElementById('campo-origem').value.trim();
+
+  // Sem destino digitado: comportamento antigo, so mostra onde ele esta.
+  if (!destino) {
+    abrirMapaNaPosicaoAtual();
+    return;
+  }
+
+  function abrirRota(coords) {
+    let url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving'
+            + '&destination=' + encodeURIComponent(destino);
+    if (coords) {
+      // Ponto de partida exato do GPS — melhor que o nome da cidade.
+      url += '&origin=' + coords.lat + ',' + coords.lon;
+    } else if (origem) {
+      url += '&origin=' + encodeURIComponent(origem);
+    }
+    // Sem nenhum dos dois, o proprio Maps usa a localizacao atual dele.
+    window.location.href = url;
+  }
+
+  if (ultimaPosicao) {
+    abrirRota(ultimaPosicao);
+  } else {
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      abrirRota({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+    }, function() {
+      abrirRota(null);
+    }, { timeout: 8000 });
+  }
+}
+
+function abrirMapaNaPosicaoAtual() {
   if (ultimaPosicao) {
     window.location.href = 'geo:' + ultimaPosicao.lat + ',' + ultimaPosicao.lon + '?q=' + ultimaPosicao.lat + ',' + ultimaPosicao.lon;
   } else {
@@ -946,6 +985,19 @@ function abrirGoogleMaps() {
     }, function() {
       alert('Não consegui pegar sua localização agora pra abrir o mapa.');
     });
+  }
+}
+
+// O botao avisa se vai abrir a rota ou so o mapa, conforme o destino.
+function atualizarBotaoMaps() {
+  const alvo = document.getElementById('btn-maps-texto');
+  if (!alvo) return;
+  const destino = document.getElementById('campo-destino').value.trim();
+  if (!destino) {
+    alvo.textContent = 'Abrir no Google Maps';
+  } else {
+    const nome = destino.length > 20 ? destino.substring(0, 20) + '...' : destino;
+    alvo.textContent = 'Ver rota até ' + nome;
   }
 }
 
@@ -1233,6 +1285,9 @@ function reiniciarCorrida() {
     }
   } catch (e) {}
 })();
+
+document.getElementById('campo-destino').addEventListener('input', atualizarBotaoMaps);
+atualizarBotaoMaps();
 
 atualizarTela(null, null);
 </script>
