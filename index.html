@@ -359,6 +359,39 @@
     color: var(--destaque);
     font-variant-numeric: tabular-nums;
   }
+  .tela-autorizacoes {
+    position: fixed; inset: 0; z-index: 200;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .autorizacoes-caixa {
+    background: var(--painel);
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 22px;
+    width: 100%;
+    max-width: 420px;
+  }
+  .autorizacoes-caixa h2 { font-size: 1.125rem; margin-bottom: 8px; }
+  .autorizacoes-ajuda { font-size: 0.8125rem; color: var(--texto-fraco); line-height: 1.5; margin-bottom: 20px; }
+  .autorizacao-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 0; border-top: 1px solid var(--borda);
+  }
+  .autorizacao-item div { flex: 1; min-width: 0; }
+  .autorizacao-item strong { display: block; font-size: 0.9375rem; margin-bottom: 3px; }
+  .autorizacao-item p { font-size: 0.75rem; color: var(--texto-fraco); line-height: 1.4; }
+  .autorizacao-btn {
+    background: none; border: 1px solid var(--destaque); color: var(--destaque);
+    padding: 10px 16px; border-radius: 20px; cursor: pointer;
+    font-family: inherit; font-size: 0.8125rem; font-weight: 600; flex-shrink: 0;
+  }
+  .autorizacao-btn[data-feito="true"] {
+    background: var(--destaque); color: var(--texto-em-destaque); border-color: var(--destaque);
+  }
+  .autorizacoes-caixa .config-salvar { margin-top: 20px; }
   .historico-vazio { color: var(--texto-fraco); text-align: center; padding: 40px 0; font-size: 0.875rem; }
 </style>
 </head>
@@ -608,6 +641,11 @@ function salvarAparenciaNoAparelho() {
       <input type="text" id="cfg-chave-pix" placeholder="Digite a chave" oninput="conferirChavePix()">
       <p id="cfg-chave-pix-ajuda" class="campo-ajuda"></p>
     </div>
+    <div class="campo">
+      <label>Autorizações do Android</label>
+      <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:14px;" onclick="abrirAutorizacoes()">Conferir GPS e bateria</button>
+      <p class="campo-ajuda">Sem elas o Android desliga o taxímetro quando você sai da tela.</p>
+    </div>
     <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
     <p id="config-msg" class="config-msg"></p>
   </div>
@@ -643,6 +681,31 @@ function salvarAparenciaNoAparelho() {
 </div>
 
 <!-- ===================== MODAL DE FORMA DE PAGAMENTO ===================== -->
+<div id="tela-autorizacoes" class="tela-autorizacoes" style="display:none">
+  <div class="autorizacoes-caixa">
+    <h2>Duas autorizações do Android</h2>
+    <p class="autorizacoes-ajuda">Sem elas o Android desliga o taxímetro quando você sai da tela — no Waze, por exemplo — e a corrida para de contar sozinha. Toque em cada botão e confirme na tela que o celular abrir. Leva meio minuto e é só uma vez.</p>
+
+    <div class="autorizacao-item">
+      <div>
+        <strong>1. GPS o tempo todo</strong>
+        <p>Na tela que abrir, escolha a opção "Permitir o tempo todo".</p>
+      </div>
+      <button id="btn-perm-gps" type="button" class="autorizacao-btn" onclick="pedirPermissaoGps()">Liberar</button>
+    </div>
+
+    <div class="autorizacao-item">
+      <div>
+        <strong>2. Sem restrição de bateria</strong>
+        <p>Na caixa que abrir, escolha "Permitir".</p>
+      </div>
+      <button id="btn-perm-bateria" type="button" class="autorizacao-btn" onclick="pedirLiberacaoBateria()">Liberar</button>
+    </div>
+
+    <button class="config-salvar" type="button" onclick="fecharAutorizacoes()">Pronto, pode usar</button>
+  </div>
+</div>
+
 <div id="modal-pagamento" class="pagamento-modal" style="display:none">
   <div class="pagamento-modal-inner">
     <h3>Corrida finalizada</h3>
@@ -1163,6 +1226,116 @@ function abrirNavegacao() {
   }, 2500);
 }
 
+// ===================== Autorizações do Android =====================
+// O Android corta GPS e processamento de app que sai da tela. Pra um
+// taxímetro isso é fatal: a corrida para de contar no meio. Estas duas
+// autorizações resolvem, e são pedidas logo na primeira abertura, pra
+// ele não ter que caçar isso nas configurações do telefone.
+const CHAVE_AUTORIZACOES = 'taximetro_autorizacoes_ok';
+
+function pluginBateria() {
+  const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+  return plugins.Bateria || null;
+}
+
+function marcarBotaoAutorizacao(id, feito, textoFeito, textoPendente) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.setAttribute('data-feito', feito ? 'true' : 'false');
+  btn.textContent = feito ? textoFeito : textoPendente;
+}
+
+// Pede o GPS "o tempo todo". O jeito de pedir é ligar o rastreamento
+// uma vez: é isso que faz o Android mostrar a tela de permissão. Logo
+// em seguida a gente desliga — era só pra pedir.
+function pedirPermissaoGps() {
+  const btn = document.getElementById('btn-perm-gps');
+  if (btn) btn.textContent = 'Pedindo...';
+
+  if (!window.BackgroundGeolocationPlugin) {
+    navigator.geolocation.getCurrentPosition(
+      function() { marcarBotaoAutorizacao('btn-perm-gps', true, 'Liberado', 'Liberar'); },
+      function() { marcarBotaoAutorizacao('btn-perm-gps', false, 'Liberado', 'Tentar de novo'); }
+    );
+    return;
+  }
+
+  let jaRespondeu = false;
+  let negou = false;
+
+  window.BackgroundGeolocationPlugin.addWatcher({
+    backgroundTitle: 'Conferindo a autorização',
+    backgroundMessage: 'Só um instante.',
+    requestPermissions: true,
+    stale: false,
+    distanceFilter: 999999
+  }, function(location, erro) {
+    if (erro) negou = true;
+    jaRespondeu = true;
+  }).then(function(id) {
+    setTimeout(function() {
+      try { window.BackgroundGeolocationPlugin.removeWatcher({ id: id }); } catch (e) {}
+      marcarBotaoAutorizacao('btn-perm-gps', jaRespondeu && !negou, 'Liberado', 'Tentar de novo');
+    }, 2500);
+  }).catch(function() {
+    marcarBotaoAutorizacao('btn-perm-gps', false, 'Liberado', 'Tentar de novo');
+  });
+}
+
+function pedirLiberacaoBateria() {
+  const bateria = pluginBateria();
+  if (!bateria) {
+    marcarBotaoAutorizacao('btn-perm-bateria', false, 'Liberado', 'Só no aplicativo');
+    return;
+  }
+  bateria.pedirLiberacao()
+    .then(function(r) {
+      if (r && r.liberado) {
+        marcarBotaoAutorizacao('btn-perm-bateria', true, 'Liberado', 'Liberar');
+      } else {
+        // Ele foi pro Android confirmar; quando voltar a gente confere.
+        marcarBotaoAutorizacao('btn-perm-bateria', false, 'Liberado', 'Conferir');
+      }
+    })
+    .catch(function() {
+      marcarBotaoAutorizacao('btn-perm-bateria', false, 'Liberado', 'Tentar de novo');
+    });
+}
+
+function conferirAutorizacoes() {
+  const bateria = pluginBateria();
+  if (!bateria) return;
+  bateria.estaLiberado().then(function(r) {
+    marcarBotaoAutorizacao('btn-perm-bateria', !!(r && r.liberado), 'Liberado', 'Liberar');
+  }).catch(function() {});
+}
+
+function abrirAutorizacoes() {
+  document.getElementById('tela-autorizacoes').style.display = 'flex';
+  conferirAutorizacoes();
+}
+
+function fecharAutorizacoes() {
+  document.getElementById('tela-autorizacoes').style.display = 'none';
+  try { localStorage.setItem(CHAVE_AUTORIZACOES, '1'); } catch (e) {}
+}
+
+// Na primeira abertura depois de instalar, mostra a tela sozinha.
+function mostrarAutorizacoesSePrimeiraVez() {
+  if (!estaNoApp()) return;
+  let jaViu = false;
+  try { jaViu = localStorage.getItem(CHAVE_AUTORIZACOES) === '1'; } catch (e) {}
+  if (!jaViu) abrirAutorizacoes();
+}
+
+// Voltando do Android, confere se ele confirmou de verdade.
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && document.getElementById('tela-autorizacoes') &&
+      document.getElementById('tela-autorizacoes').style.display === 'flex') {
+    conferirAutorizacoes();
+  }
+});
+
 // Diz se estamos rodando dentro do aplicativo instalado (e nao no site
 // de teste aberto pelo navegador).
 function estaNoApp() {
@@ -1598,6 +1771,7 @@ document.getElementById('campo-destino').addEventListener('input', atualizarBota
 atualizarBotaoMaps();
 
 atualizarTela(null, null);
+mostrarAutorizacoesSePrimeiraVez();
 </script>
 </body>
 </html>
