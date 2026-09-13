@@ -146,9 +146,15 @@
   .filtro-periodo { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
   .filtro-btn {
     background: none; border: 1px solid var(--borda); color: var(--texto-fraco);
-    padding: 8px 12px; font-size: 0.75rem; border-radius: 20px; cursor: pointer;
+    padding: 11px 15px; font-size: 0.8125rem; border-radius: 20px; cursor: pointer;
+    font-family: inherit;
   }
-  .filtro-btn[data-ativo="true"] { border-color: var(--destaque); color: var(--destaque); }
+  .filtro-btn[data-ativo="true"] {
+    border-color: var(--destaque);
+    background: var(--destaque);
+    color: var(--texto-em-destaque);
+    font-weight: 700;
+  }
   .filtro-personalizado { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .filtro-personalizado input {
     background: var(--painel); border: 1px solid var(--borda); color: var(--texto);
@@ -1105,6 +1111,13 @@ function formatarDataHistorico(isoString) {
 }
 
 const ROTULO_PAGAMENTO = { dinheiro: 'Dinheiro', cartao: 'Cartão', pix: 'Pix' };
+const ROTULO_PERIODO = {
+  '7': 'últimos 7 dias',
+  '15': 'últimos 15 dias',
+  'mes': 'este mês',
+  'tudo': 'todo o histórico',
+  'personalizado': 'período escolhido'
+};
 
 let filtroPeriodoAtual = 'tudo';
 
@@ -1156,8 +1169,9 @@ function renderizarHistorico() {
   const container = document.getElementById('lista-historico');
   const resumo = document.getElementById('historico-resumo');
 
-  const totalValor = historico.reduce(function(soma, item) { return soma + item.valor; }, 0);
-  resumo.innerHTML = `<span>${historico.length} corrida${historico.length === 1 ? '' : 's'}</span><strong>R$ ${formatarMoeda(totalValor)}</strong>`;
+  const totalValor = historico.reduce(function(soma, item) { return soma + (item.valor || 0); }, 0);
+  const rotuloPeriodo = ROTULO_PERIODO[filtroPeriodoAtual] || '';
+  resumo.innerHTML = `<span>${historico.length} corrida${historico.length === 1 ? '' : 's'} · ${rotuloPeriodo}</span><strong>R$ ${formatarMoeda(totalValor)}</strong>`;
 
   if (!historico.length) {
     container.innerHTML = '<p class="historico-vazio">Nenhuma corrida nesse período.</p>';
@@ -1172,7 +1186,7 @@ function renderizarHistorico() {
         <div>
           <div class="historico-data">${formatarDataHistorico(item.data)}</div>
           ${trajetoHtml}
-          <div class="historico-detalhes">${item.distanciaKm.toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS)}</div>
+          <div class="historico-detalhes">${Number(item.distanciaKm || 0).toFixed(2).replace('.', ',')} km · ${formatarTempo(item.tempoS || 0)}</div>
           ${formaHtml}
         </div>
         <div class="historico-valor">R$ ${formatarMoeda(item.valor)}</div>
@@ -1183,7 +1197,7 @@ function renderizarHistorico() {
 
 function exportarHistoricoPdf() {
   if (!window.jsPDFLib) {
-    alert('Exportação de PDF só funciona no aplicativo instalado.');
+    alert('A parte que gera o PDF não carregou. Feche o app por completo e abra de novo.');
     return;
   }
   const historico = historicoFiltrado();
@@ -1192,8 +1206,58 @@ function exportarHistoricoPdf() {
     return;
   }
 
+  let doc;
+  try {
+    doc = montarPdfHistorico(historico);
+  } catch (e) {
+    alert('Não consegui montar o PDF: ' + ((e && e.message) || e));
+    return;
+  }
+
+  const nomeArquivo = 'taximetro-' + new Date().toISOString().substring(0, 10) + '.pdf';
+  const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+
+  // Dentro do app instalado o download comum do navegador NAO funciona
+  // (a tela do app nao tem gerenciador de downloads) — era por isso que
+  // o botao parecia nao fazer nada. Agora o PDF e gravado no proprio
+  // aparelho e aberto na tela de compartilhar do Android, de onde da pra
+  // salvar em Downloads, mandar no WhatsApp, no e-mail ou imprimir.
+  if (plugins.Filesystem && plugins.Share) {
+    let base64;
+    try {
+      base64 = doc.output('datauristring').split(',')[1];
+    } catch (e) {
+      alert('Não consegui preparar o arquivo: ' + ((e && e.message) || e));
+      return;
+    }
+    plugins.Filesystem.writeFile({ path: nomeArquivo, data: base64, directory: 'CACHE' })
+      .then(function(res) {
+        return plugins.Share.share({
+          title: 'Histórico de corridas',
+          url: res.uri,
+          dialogTitle: 'Salvar ou enviar o PDF'
+        });
+      })
+      .catch(function(err) {
+        const msg = ((err && err.message) || String(err)).toLowerCase();
+        // Fechar a tela de compartilhar na mao nao e erro.
+        if (msg.indexOf('cancel') !== -1 || msg.indexOf('abort') !== -1 || msg.indexOf('dismiss') !== -1) return;
+        alert('Não consegui salvar o PDF: ' + ((err && err.message) || err));
+      });
+    return;
+  }
+
+  // Navegador comum (site de teste): download direto mesmo.
+  try {
+    doc.save(nomeArquivo);
+  } catch (e) {
+    alert('Não consegui gerar o PDF: ' + ((e && e.message) || e));
+  }
+}
+
+function montarPdfHistorico(historico) {
   const doc = new window.jsPDFLib();
-  const totalValor = historico.reduce(function(soma, item) { return soma + item.valor; }, 0);
+  const totalValor = historico.reduce(function(soma, item) { return soma + (item.valor || 0); }, 0);
 
   doc.setFontSize(16);
   doc.text('Taxímetro — Histórico de corridas', 14, 18);
@@ -1216,15 +1280,15 @@ function exportarHistoricoPdf() {
   historico.forEach(function(item) {
     if (y > 280) { doc.addPage(); y = 18; }
     doc.text(formatarDataHistorico(item.data), 14, y);
-    doc.text((item.trajeto || '-').substring(0, 32), 42, y);
-    doc.text(item.distanciaKm.toFixed(2).replace('.', ','), 118, y);
-    doc.text(formatarTempo(item.tempoS), 135, y);
+    doc.text(String(item.trajeto || '-').substring(0, 32), 42, y);
+    doc.text(Number(item.distanciaKm || 0).toFixed(2).replace('.', ','), 118, y);
+    doc.text(formatarTempo(item.tempoS || 0), 135, y);
     doc.text(ROTULO_PAGAMENTO[item.formaPagamento] || '-', 158, y);
-    doc.text('R$ ' + formatarMoeda(item.valor), 178, y);
+    doc.text('R$ ' + formatarMoeda(item.valor || 0), 178, y);
     y += 6;
   });
 
-  doc.save('taximetro-historico.pdf');
+  return doc;
 }
 
 function escapeHtmlTexto(str) {
