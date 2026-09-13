@@ -187,18 +187,31 @@
   .status-esperando { color: var(--alerta); }
   .status-sem-gps { color: var(--perigo); }
 
-  .campo-trajeto { padding: 0 20px 10px; }
+  .campo-trajeto {
+    padding: 0 20px 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .campo-trajeto input {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     background: var(--painel);
     border: 1px solid var(--borda);
     color: var(--texto);
-    padding: 10px 12px;
+    padding: 10px 8px;
     font-size: 0.8125rem;
     border-radius: 4px;
     text-align: center;
   }
   .campo-trajeto input:focus { outline: none; border-color: var(--destaque); }
+  .trajeto-seta { color: var(--texto-fraco); font-size: 0.9375rem; flex-shrink: 0; }
+  .campo-trajeto-ajuda {
+    text-align: center;
+    font-size: 0.6875rem;
+    color: var(--texto-fraco);
+    padding: 0 20px 10px;
+  }
 
   /* ---------- Painel principal ---------- */
   .painel-principal {
@@ -430,8 +443,11 @@ function salvarAparenciaNoAparelho() {
   <div id="status-linha" class="status-linha status-parado-app">Pronto pra iniciar</div>
 
   <div class="campo-trajeto">
-    <input type="text" id="campo-de-para" placeholder="De onde pra onde (opcional) — ex: Goiatuba → Itumbiara">
+    <input type="text" id="campo-origem" placeholder="Origem" autocomplete="off">
+    <span class="trajeto-seta">&#8594;</span>
+    <input type="text" id="campo-destino" placeholder="Destino" autocomplete="off">
   </div>
+  <p class="campo-trajeto-ajuda">Opcional — só pra corrida entre cidades. Pode deixar em branco.</p>
 
   <div id="aviso-gps" class="aviso-gps" style="display:none">
     Não consegui acessar sua localização. Verifique se o GPS está ligado e se o app tem permissão de localização.
@@ -876,8 +892,6 @@ function iniciarCorrida() {
     return;
   }
 
-  document.getElementById('campo-de-para').value = '';
-
   estado = {
     valorTotal: bandeiradaAtual(),
     distanciaTotalKm: 0,
@@ -994,10 +1008,17 @@ function concluirFinalizacao(formaPagamento) {
       valor: estado.valorTotal,
       distanciaKm: estado.distanciaTotalKm,
       tempoS: estado.tempoTotalS,
-      trajeto: document.getElementById('campo-de-para').value.trim(),
+      trajeto: montarTrajeto(),
+      origem: document.getElementById('campo-origem').value.trim(),
+      destino: document.getElementById('campo-destino').value.trim(),
       formaPagamento: formaPagamento
     });
   }
+
+  // A corrida ja foi guardada com origem e destino: pode limpar os
+  // campos pra proxima, sem risco de perder nada.
+  document.getElementById('campo-origem').value = '';
+  document.getElementById('campo-destino').value = '';
 
   document.getElementById('btn-principal').textContent = 'Iniciar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-iniciar';
@@ -1175,9 +1196,22 @@ function limparHistorico() {
   renderizarHistorico();
 }
 
+// Junta origem e destino num texto so, pro historico e pro PDF.
+// Os dois campos sao opcionais: se os dois estiverem vazios devolve
+// vazio, e se so um estiver preenchido devolve so ele. O app calcula e
+// salva a corrida do mesmo jeito em qualquer um dos casos.
+function montarTrajeto() {
+  const origem = document.getElementById('campo-origem').value.trim();
+  const destino = document.getElementById('campo-destino').value.trim();
+  if (origem && destino) return origem + ' \u2192 ' + destino;
+  return origem || destino || '';
+}
+
 function reiniciarCorrida() {
   estado = { valorTotal: 0, distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
   ultimaPosicao = null;
+  document.getElementById('campo-origem').value = '';
+  document.getElementById('campo-destino').value = '';
   document.getElementById('btn-reiniciar').style.display = 'none';
   atualizarTela('Pronto pra iniciar', 'status-parado-app');
   salvarEstadoAtual();
