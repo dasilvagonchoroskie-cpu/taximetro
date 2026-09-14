@@ -1261,6 +1261,7 @@ function medirPosicao(pos) {
         atualizarTela('Parado / esperando', 'status-esperando');
       }
 
+      atualizarNotificacaoCorrida(false);
       salvarEstadoAtual();
     }
   }
@@ -1277,6 +1278,40 @@ function cobrancaDoTempoParado(segundosNovos) {
   const depois = antes + segundosNovos;
   const cobraveis = Math.max(0, depois - Math.max(incluidoS, antes));
   return (cobraveis / 60) * CONFIG.taxaEspera;
+}
+
+// ================= Notificação da corrida em andamento =================
+// Mostra valor, distância e tempo na barra de notificações enquanto a
+// corrida está aberta. Serve pro motorista acompanhar com o Waze na
+// frente, e ajuda a segurar a prioridade do aplicativo no Android.
+let ultimaNotificacaoMs = 0;
+
+function pluginNotificacao() {
+  const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+  return plugins.NotificacaoCorrida || null;
+}
+
+function textoDaNotificacao() {
+  return 'R$ ' + formatarMoeda(estado.valorTotal) +
+         '  ·  ' + (estado.distanciaTotalKm || 0).toFixed(2).replace('.', ',') + ' km' +
+         '  ·  ' + formatarTempo(estado.tempoTotalS || 0);
+}
+
+function atualizarNotificacaoCorrida(forcar) {
+  const plugin = pluginNotificacao();
+  if (!plugin || !corridaAtiva) return;
+  const agora = Date.now();
+  if (!forcar && (agora - ultimaNotificacaoMs) < 1000) return;
+  ultimaNotificacaoMs = agora;
+  try {
+    plugin.mostrar({ titulo: 'Corrida em andamento', texto: textoDaNotificacao() });
+  } catch (e) {}
+}
+
+function esconderNotificacaoCorrida() {
+  const plugin = pluginNotificacao();
+  if (!plugin) return;
+  try { plugin.esconder(); } catch (e) {}
 }
 
 // Cobra um pedaço de tempo como espera. Usado tanto pelo GPS quanto
@@ -1331,6 +1366,7 @@ function ligarRelogioDaCorrida() {
       ultimaPosicao ? 'Parado / esperando' : 'Sem GPS — contando o tempo',
       'status-esperando'
     );
+    atualizarNotificacaoCorrida(false);
     salvarEstadoAtual();
   }, 1000);
 }
@@ -1434,6 +1470,9 @@ function iniciarCorrida() {
   ultimoInstanteMs = null;
   corridaAtiva = true;
   ligarRelogioDaCorrida();
+  const plugNot = pluginNotificacao();
+  if (plugNot) { try { plugNot.pedirPermissao(); } catch (e) {} }
+  atualizarNotificacaoCorrida(true);
 
   atualizarTela('Localizando...', 'status-parado-app');
 
@@ -1443,8 +1482,8 @@ function iniciarCorrida() {
     // fixo na barra de notificações enquanto isso, exigido pelo
     // próprio Android).
     window.BackgroundGeolocationPlugin.addWatcher({
-      backgroundTitle: 'Taxímetro rodando',
-      backgroundMessage: 'Corrida em andamento — toque pra voltar ao app.',
+      backgroundTitle: 'GPS ligado',
+      backgroundMessage: 'Exigido pelo Android. Os números da corrida estão no outro aviso.',
       requestPermissions: true,
       stale: false,
       distanceFilter: 0
@@ -2007,6 +2046,7 @@ function cancelarCorrida() {
   if (!confirm('Cancelar esta corrida?\n\nEla não vai ser gravada no histórico e o valor volta pra zero.')) return;
 
   desligarRelogioDaCorrida();
+  esconderNotificacaoCorrida();
   if (watchId !== null) {
     if (window.BackgroundGeolocationPlugin) {
       try { window.BackgroundGeolocationPlugin.removeWatcher({ id: watchId }); } catch (e) {}
@@ -2021,6 +2061,7 @@ function cancelarCorrida() {
 
 function finalizarCorrida() {
   desligarRelogioDaCorrida();
+  esconderNotificacaoCorrida();
   // O último pedaço rodado não pode ficar pra trás no acumulador.
   fecharTrechoRodado();
 
