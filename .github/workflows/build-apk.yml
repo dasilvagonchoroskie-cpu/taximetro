@@ -31,6 +31,14 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
+      - name: Carimbar a versao dentro do aplicativo
+        run: |
+          VERSAO=$(grep -m1 'versionName' android/app/build.gradle | sed 's/.*"\(.*\)".*/\1/')
+          if [ -z "$VERSAO" ]; then echo "ERRO: nao achei o versionName"; exit 1; fi
+          echo "versao: $VERSAO"
+          sed -i "s/VERSAO_NA_MONTAGEM/$VERSAO/" www/index.html
+          grep -c "const VERSAO_APP = '$VERSAO'" www/index.html
+
       - name: Sincronizar projeto Android (Capacitor)
         run: npx cap sync android
 
