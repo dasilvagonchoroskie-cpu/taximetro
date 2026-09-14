@@ -242,7 +242,7 @@
 
   .metricas {
     display: flex;
-    gap: 40px;
+    gap: 26px;
     margin-top: 32px;
   }
   .metrica { text-align: center; }
@@ -581,6 +581,10 @@ function salvarAparenciaNoAparelho() {
       <div class="metrica">
         <div class="metrica-valor" id="valor-tempo">00:00</div>
         <div class="metrica-rotulo">Tempo</div>
+      </div>
+      <div class="metrica">
+        <div class="metrica-valor" id="valor-velocidade">—</div>
+        <div class="metrica-rotulo">km/h</div>
       </div>
     </div>
   </div>
@@ -1100,6 +1104,11 @@ let ancoraParado = null; // { lat, lon }
 // mesmo segundo duas vezes.
 let ultimoInstanteMs = null;
 let relogioCorrida = null;
+// Velocidade pra mostrar na tela. null = sem leitura ainda.
+let velocidadeAtualKmh = null;
+// Quantas leituras seguidas cairam longe da ancora. Serve pra nao
+// soltar a ancora por causa de um pulo solto do GPS.
+let fugasSeguidas = 0;
 
 let estado = {
   valorTotal: 0,
@@ -1122,6 +1131,12 @@ function formatarTempo(segundosTotais) {
 }
 
 function atualizarTela(statusTexto, statusClasse) {
+  const campoVel = document.getElementById('valor-velocidade');
+  if (campoVel) {
+    campoVel.textContent = (velocidadeAtualKmh === null)
+      ? '—'
+      : String(Math.round(velocidadeAtualKmh));
+  }
   document.getElementById('valor-total').textContent = formatarMoeda(estado.valorTotal);
   document.getElementById('valor-distancia').textContent = estado.distanciaTotalKm.toFixed(2).replace('.', ',') + ' km';
   document.getElementById('valor-tempo').textContent = formatarTempo(estado.tempoTotalS);
@@ -1176,6 +1191,13 @@ function medirPosicao(pos) {
   const velocidadeDizQueAnda = velocidadeGpsKmh !== null
     && velocidadeGpsKmh >= VELOCIDADE_PARADO_KMH;
 
+  // Velocimétro: usa a velocidade medida pelo próprio GPS, que é a
+  // mesma que o Waze mostra. Abaixo do limiar de carro parado, mostra
+  // zero em vez de ficar tremendo em 1 ou 2 km/h.
+  if (leituraBoa && velocidadeGpsKmh !== null) {
+    velocidadeAtualKmh = velocidadeGpsKmh < VELOCIDADE_PARADO_KMH ? 0 : velocidadeGpsKmh;
+  }
+
   const tempoDecorridoS = tempoDesdeAUltimaContagem(agoraMs);
 
   if (tempoDecorridoS !== null) {
@@ -1203,14 +1225,26 @@ function medirPosicao(pos) {
         const daAncoraM = distanciaHaversineMetros(
           ancoraParado.lat, ancoraParado.lon, latitude, longitude);
 
-        const saiuMesmo = velocidadeGpsKmh !== null
-          ? (velocidadeDizQueAnda || daAncoraM >= FUGA_DA_ANCORA_M)
-          : (daAncoraM >= limiteRuidoM);
+        let saiuMesmo;
+        if (velocidadeGpsKmh !== null) {
+          // Aparelho mede velocidade: ela decide. Só uma fuga enorme
+          // passa por cima (válvula pra aparelho que reporta zero
+          // pra sempre).
+          saiuMesmo = velocidadeDizQueAnda || daAncoraM >= FUGA_DA_ANCORA_M;
+        } else {
+          // Sem velocidade do aparelho, só sobra a posição — e ela
+          // treme. Então exige DUAS leituras seguidas longe da âncora:
+          // um pulo solto do GPS não tira o carro do lugar.
+          const limiteFugaM = Math.max(DISTANCIA_MINIMA_RUIDO_M, margemM * 2.5);
+          fugasSeguidas = (daAncoraM >= limiteFugaM) ? (fugasSeguidas + 1) : 0;
+          saiuMesmo = fugasSeguidas >= 2;
+        }
 
         if (saiuMesmo) {
           deslocamentoM = daAncoraM;
           andando = true;
           ancoraParado = null;
+          fugasSeguidas = 0;
         }
       } else if (podeMedir) {
         // ---- Carro andando: mede de leitura em leitura ----
@@ -1229,6 +1263,7 @@ function medirPosicao(pos) {
 
         if (parouAgora) {
           ancoraParado = { lat: latitude, lon: longitude };
+          fugasSeguidas = 0;
         } else if (!saltoAbsurdo) {
           deslocamentoM = passoM;
           andando = true;
@@ -1262,6 +1297,16 @@ function medirPosicao(pos) {
       atualizarNotificacaoCorrida(false);
       salvarEstadoAtual();
     }
+  }
+
+  // Quem toca em "Iniciar corrida" está parado, esperando o passageiro.
+  // Então a corrida já começa ancorada na primeira leitura boa. Sem
+  // isso, os primeiros pulos do GPS (rede -> satélite) entravam como
+  // distância rodada antes de a âncora existir — foi o que comeu a
+  // frança de 5 minutos com 60 metros de tremida.
+  if (leituraBoa && !ancoraParado && !estado.jaAndou && !velocidadeDizQueAnda) {
+    ancoraParado = { lat: latitude, lon: longitude };
+    fugasSeguidas = 0;
   }
 
   ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs, boa: leituraBoa };
@@ -1360,6 +1405,7 @@ function ligarRelogioDaCorrida() {
     cobrarComoParado(segundos);
     bufferDistanciaM = 0;
     bufferTempoS = 0;
+    velocidadeAtualKmh = ultimaPosicao ? 0 : null;
     atualizarTela(
       ultimaPosicao ? 'Parado / esperando' : 'Sem GPS — contando o tempo',
       'status-esperando'
@@ -1465,7 +1511,9 @@ function iniciarCorrida() {
   bufferDistanciaM = 0;
   bufferTempoS = 0;
   ancoraParado = null;
+  fugasSeguidas = 0;
   ultimoInstanteMs = null;
+  velocidadeAtualKmh = null;
   corridaAtiva = true;
   ligarRelogioDaCorrida();
   const plugNot = pluginNotificacao();
@@ -2445,6 +2493,13 @@ function reiniciarCorrida() {
   document.getElementById('campo-destino').value = '';
   document.getElementById('btn-reiniciar').style.display = 'none';
   document.getElementById('btn-cancelar').style.display = 'none';
+  document.getElementById('btn-maps').style.display = 'none';
+  // Corrida cancelada ou zerada some da tela: o botão volta a ser o de
+  // abrir corrida nova, não o de finalizar uma que não existe mais.
+  const principal = document.getElementById('btn-principal');
+  principal.textContent = 'Iniciar corrida';
+  principal.className = 'btn-grande btn-iniciar';
+  velocidadeAtualKmh = null;
   atualizarTela('Pronto pra iniciar', 'status-parado-app');
   salvarEstadoAtual();
 }
