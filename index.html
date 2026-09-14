@@ -383,6 +383,31 @@
     padding: 12px; border-radius: 4px; font-size: 0.8125rem;
     font-family: inherit; resize: vertical; word-break: break-all;
   }
+  .licenca-entrada {
+    width: 100%; margin-top: 18px; text-align: center;
+    background: var(--bg); border: 1px solid var(--borda); color: var(--texto);
+    padding: 14px 10px; border-radius: 4px;
+    font-size: 1.25rem; font-weight: 700; letter-spacing: 2px;
+    font-family: inherit; text-transform: uppercase;
+  }
+  .licenca-entrada::placeholder {
+    color: var(--texto-fraco); font-weight: 400; letter-spacing: 1px;
+  }
+  .licenca-rodape {
+    text-align: center; margin-top: 22px; padding-top: 16px;
+    border-top: 1px solid var(--borda);
+  }
+  .licenca-codigo-peq {
+    display: block; margin-top: 6px; font-size: 0.9375rem; font-weight: 700;
+    letter-spacing: 1px; color: var(--destaque); word-break: break-all;
+    font-variant-numeric: tabular-nums;
+  }
+  .licenca-btn-peq {
+    width: 100%; margin-top: 10px; padding: 10px;
+    background: transparent; border: 1px solid var(--borda);
+    color: var(--texto-fraco); border-radius: 4px;
+    font-size: 0.8125rem; font-family: inherit;
+  }
   .licenca-msg { text-align: center; font-size: 0.875rem; margin-top: 12px; min-height: 1.2em; }
   .licenca-marca { text-align: center; font-size: 0.75rem; color: var(--texto-fraco); margin-top: 18px; }
   .tela-autorizacoes {
@@ -706,18 +731,24 @@ function salvarAparenciaNoAparelho() {
   </div>
 </div>
 
-<!-- ===================== MODAL DE FORMA DE PAGAMENTO ===================== -->
+<!-- ===================== TELA DE ATIVAÇÃO ===================== -->
 <div id="tela-licenca" class="tela-licenca">
   <div class="licenca-caixa">
     <h2>Ativar o aplicativo</h2>
-    <p>Este aplicativo é licenciado para um aparelho só. Mande o código abaixo para quem te vendeu o app e receba a chave de ativação.</p>
+    <p>Digite a chave de ativação que você recebeu. Precisa de internet só desta vez — depois o aplicativo funciona sem.</p>
 
-    <strong id="licenca-codigo" class="licenca-codigo">...</strong>
-    <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:12px;" onclick="copiarCodigoAparelho()">Copiar código do aparelho</button>
-
-    <textarea id="licenca-chave" placeholder="Cole aqui a chave de ativação que você recebeu" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <input id="licenca-chave" class="licenca-entrada" type="text"
+           placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="120"
+           autocomplete="off" autocapitalize="characters" spellcheck="false"
+           oninput="formatarChaveDigitada(this)">
     <button class="config-salvar" type="button" style="margin-top:12px;" onclick="ativarLicenca()">Ativar</button>
     <p id="licenca-msg" class="licenca-msg"></p>
+
+    <p class="licenca-rodape">
+      Código deste aparelho
+      <strong id="licenca-codigo" class="licenca-codigo-peq">...</strong>
+    </p>
+    <button type="button" class="licenca-btn-peq" onclick="copiarCodigoAparelho()">Copiar código do aparelho</button>
 
     <p class="licenca-marca">Fortaleza Digital Security</p>
   </div>
@@ -1277,6 +1308,7 @@ function abrirNavegacao() {
 // não consegue fabricar chave pra outro celular — e o arquivo repassado
 // no WhatsApp instala, mas fica travado até ser ativado.
 const APP_ID = 'taximetro';
+const SERVIDOR_LICENCAS = 'https://fortaleza-licencas.fortalezadigitalsecurity.workers.dev';
 const CHAVE_PUBLICA_LICENCA = {"kty":"EC","crv":"P-256","x":"yBHKjFLZZJzoY1l490yRD3ru9ROE03gS9C3XH0Gb0v4","y":"-sa1VYlT3Fvxhh9fJEaav3VO69vM5qiiJ3yE5io-AJw"};
 const CHAVE_LICENCA_SALVA = 'taximetro_licenca';
 const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem I, O, 0 e 1
@@ -1342,31 +1374,94 @@ function copiarCodigoAparelho() {
   document.body.removeChild(campo);
   const msg = document.getElementById('licenca-msg');
   msg.style.color = 'var(--destaque)';
-  msg.textContent = 'Código copiado. Mande no WhatsApp.';
+  msg.textContent = 'Código copiado.';
 }
 
+// Vai pondo os tracinhos sozinho enquanto ele digita: XXXX-XXXX-XXXX-XXXX.
+// Se for uma chave antiga (a comprida), deixa em paz.
+function formatarChaveDigitada(campo) {
+  const bruto = String(campo.value || '');
+  if (bruto.replace(/[^A-Za-z0-9_-]/g, '').length > 20) return;
+  const limpo = bruto.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+  campo.value = limpo.replace(/(.{4})(?=.)/g, '$1-');
+}
+
+// Guarda a liberação no aparelho e solta o aplicativo.
+function guardarLicenca(assinatura) {
+  const msg = document.getElementById('licenca-msg');
+  try { localStorage.setItem(CHAVE_LICENCA_SALVA, assinatura); } catch (e) {}
+  msg.style.color = 'var(--destaque)';
+  msg.textContent = 'Ativado! Bom trabalho.';
+  setTimeout(function() {
+    document.getElementById('tela-licenca').style.display = 'none';
+    mostrarAutorizacoesSePrimeiraVez();
+  }, 900);
+}
+
+// A chave curta vai até o servidor junto com o código deste aparelho.
+// O servidor gruda uma coisa na outra e devolve a liberação assinada.
+// Se a mesma chave já tiver sido usada noutro celular, ele recusa.
 function ativarLicenca() {
   const msg = document.getElementById('licenca-msg');
-  const digitada = document.getElementById('licenca-chave').value;
+  const digitada = String(document.getElementById('licenca-chave').value || '').trim();
   msg.style.color = 'var(--texto-fraco)';
-  msg.textContent = 'Conferindo...';
 
-  conferirChaveDeAtivacao(codigoDoAparelho, digitada).then(function(valida) {
-    if (!valida) {
+  if (!codigoDoAparelho) {
+    msg.style.color = 'var(--alerta)';
+    msg.textContent = 'Não consegui identificar este aparelho. Feche e abra o aplicativo de novo.';
+    return;
+  }
+
+  // Chave antiga, comprida: confere aqui mesmo, sem internet.
+  const comprida = digitada.replace(/[^A-Za-z0-9_-]/g, '');
+  if (comprida.length >= 80) {
+    msg.textContent = 'Conferindo...';
+    conferirChaveDeAtivacao(codigoDoAparelho, comprida).then(function(valida) {
+      if (valida) { guardarLicenca(comprida); return; }
       msg.style.color = 'var(--alerta)';
-      msg.textContent = 'Essa chave não serve neste aparelho. Confira se colou inteira.';
-      return;
-    }
-    try {
-      localStorage.setItem(CHAVE_LICENCA_SALVA, digitada.replace(/[^A-Za-z0-9_-]/g, ''));
-    } catch (e) {}
-    msg.style.color = 'var(--destaque)';
-    msg.textContent = 'Ativado! Bom trabalho.';
-    setTimeout(function() {
-      document.getElementById('tela-licenca').style.display = 'none';
-      mostrarAutorizacoesSePrimeiraVez();
-    }, 900);
-  });
+      msg.textContent = 'Essa chave não serve neste aparelho.';
+    });
+    return;
+  }
+
+  const curta = digitada.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (curta.length !== 16) {
+    msg.style.color = 'var(--alerta)';
+    msg.textContent = 'A chave tem 16 letras e números, em quatro grupos de quatro.';
+    return;
+  }
+  const chave = curta.replace(/(.{4})(?=.)/g, '$1-');
+
+  msg.textContent = 'Falando com o servidor...';
+  fetch(SERVIDOR_LICENCAS + '/ativar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chave: chave, app_id: APP_ID, aparelho: codigoDoAparelho })
+  })
+    .then(function(r) {
+      return r.json().catch(function() {
+        return { ok: false, motivo: 'O servidor respondeu uma coisa estranha.' };
+      });
+    })
+    .then(function(resposta) {
+      if (!resposta || !resposta.ok || !resposta.assinatura) {
+        msg.style.color = 'var(--alerta)';
+        msg.textContent = (resposta && resposta.motivo) || 'Não deu para ativar.';
+        return;
+      }
+      return conferirChaveDeAtivacao(codigoDoAparelho, resposta.assinatura).then(function(valida) {
+        if (!valida) {
+          msg.style.color = 'var(--alerta)';
+          msg.textContent = 'A liberação veio errada. Fale com quem te passou a chave.';
+          return;
+        }
+        guardarLicenca(resposta.assinatura);
+      });
+    })
+    .catch(function() {
+      msg.style.color = 'var(--alerta)';
+      msg.textContent = 'Sem internet. Ligue os dados do celular e toque em Ativar de novo.';
+    });
 }
 
 // Confere a licença toda vez que o app abre. Como a chave é amarrada ao
