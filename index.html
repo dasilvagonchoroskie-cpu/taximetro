@@ -667,6 +667,11 @@ function salvarAparenciaNoAparelho() {
       <p class="campo-ajuda">Só começa a cobrar valor por km rodado depois de passar dessa distância. Coloque 0 pra cobrar por km desde o início.</p>
     </div>
     <div class="campo">
+      <label>Minutos incluídos na bandeirada (não cobra espera até aqui)</label>
+      <input type="number" id="cfg-minutos-incluido" inputmode="decimal" step="1" min="0">
+      <p class="campo-ajuda">Só começa a cobrar o minuto parado depois desse tempo de espera somado. Coloque 0 pra cobrar espera desde o início.</p>
+    </div>
+    <div class="campo">
       <label>Valor por km rodado</label>
       <input type="number" id="cfg-taxa-km" inputmode="decimal" step="0.01" min="0">
     </div>
@@ -809,6 +814,7 @@ const CONFIG_PADRAO = {
   horaInicioNoite: 22, // a partir dessa hora (0-23) já é bandeira 2
   horaFimNoite: 6, // até essa hora (0-23) ainda é bandeira 2
   kmIncluidoNaBandeirada: 1.5, // primeiros X km não cobram valor por km, só depois disso
+  minutosIncluidoNaBandeirada: 5, // primeiros X minutos parado não cobram espera
   taxaKm: 2.80,
   taxaEspera: 0.55, // por minuto parado
   limiarVelocidadeKmh: 5
@@ -841,6 +847,7 @@ function preencherFormularioConfig() {
   document.getElementById('cfg-hora-inicio-noite').value = CONFIG.horaInicioNoite;
   document.getElementById('cfg-hora-fim-noite').value = CONFIG.horaFimNoite;
   document.getElementById('cfg-km-incluido').value = CONFIG.kmIncluidoNaBandeirada;
+  document.getElementById('cfg-minutos-incluido').value = CONFIG.minutosIncluidoNaBandeirada;
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
@@ -856,6 +863,7 @@ function salvarConfiguracoes() {
   const horaInicioNoite = parseInt(document.getElementById('cfg-hora-inicio-noite').value, 10);
   const horaFimNoite = parseInt(document.getElementById('cfg-hora-fim-noite').value, 10);
   const kmIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-km-incluido').value);
+  const minutosIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-minutos-incluido').value);
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
@@ -874,6 +882,7 @@ function salvarConfiguracoes() {
     horaInicioNoite: isNaN(horaInicioNoite) ? CONFIG_PADRAO.horaInicioNoite : horaInicioNoite,
     horaFimNoite: isNaN(horaFimNoite) ? CONFIG_PADRAO.horaFimNoite : horaFimNoite,
     kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
+    minutosIncluidoNaBandeirada: isNaN(minutosIncluidoNaBandeirada) ? 0 : minutosIncluidoNaBandeirada,
     taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix, tipoChavePix
   };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
@@ -1133,7 +1142,7 @@ function processarNovaPosicao(pos) {
         // do GPS, mas o tempo guardado nele é tempo de corrida e tem que
         // ser pago como espera.
         const segundosParado = tempoDecorridoS + bufferTempoS;
-        const cobrancaParado = (segundosParado / 60) * CONFIG.taxaEspera;
+        const cobrancaParado = cobrancaDoTempoParado(segundosParado);
         estado.valorEspera = (estado.valorEspera || 0) + cobrancaParado;
         estado.tempoParadoS = (estado.tempoParadoS || 0) + segundosParado;
         estado.valorTotal += cobrancaParado;
@@ -1147,6 +1156,18 @@ function processarNovaPosicao(pos) {
   }
 
   ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs };
+}
+
+// Quanto custa um pedaço de tempo parado, respeitando os minutos que
+// já vêm incluídos na bandeirada. Funciona igual aos km incluídos: os
+// primeiros minutos de espera da corrida são de graça, e quando um
+// pedaço cruza essa marca no meio, só a parte de depois é cobrada.
+function cobrancaDoTempoParado(segundosNovos) {
+  const incluidoS = (CONFIG.minutosIncluidoNaBandeirada || 0) * 60;
+  const antes = estado.tempoParadoS || 0;
+  const depois = antes + segundosNovos;
+  const cobraveis = Math.max(0, depois - Math.max(incluidoS, antes));
+  return (cobraveis / 60) * CONFIG.taxaEspera;
 }
 
 // Fecha o trecho acumulado: soma a distância no odômetro e cobra o que
@@ -1164,7 +1185,7 @@ function fecharTrechoRodado() {
   const kmCobravel = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntes));
 
   const porDistancia = kmCobravel * CONFIG.taxaKm;
-  const porTempo = (bufferTempoS / 60) * CONFIG.taxaEspera;
+  const porTempo = cobrancaDoTempoParado(bufferTempoS);
 
   if (porDistancia >= porTempo) {
     estado.valorDistancia = (estado.valorDistancia || 0) + porDistancia;
@@ -1727,6 +1748,7 @@ function concluirFinalizacao(formaPagamento) {
       taxaKmUsada: CONFIG.taxaKm,
       taxaEsperaUsada: CONFIG.taxaEspera,
       kmIncluidoUsado: CONFIG.kmIncluidoNaBandeirada || 0,
+      minutosIncluidoUsado: CONFIG.minutosIncluidoNaBandeirada || 0,
       trajeto: montarTrajeto(),
       origem: document.getElementById('campo-origem').value.trim(),
       destino: document.getElementById('campo-destino').value.trim(),
@@ -1834,7 +1856,12 @@ function detalharConta(item) {
     partes.push(kmCobrados.toFixed(2).replace('.', ',') + ' km R$ ' + formatarMoeda(item.valorDistancia));
   }
   if (item.valorEspera > 0) {
-    partes.push('parado ' + formatarTempo(item.tempoParadoS || 0) + ' R$ ' + formatarMoeda(item.valorEspera));
+    const minInclusos = item.minutosIncluidoUsado || 0;
+    const inclusos = minInclusos > 0
+      ? ' (' + String(minInclusos).replace('.', ',') + ' min inclusos)'
+      : '';
+    partes.push('parado ' + formatarTempo(item.tempoParadoS || 0) + inclusos +
+                ' R$ ' + formatarMoeda(item.valorEspera));
   }
   return '<div class="historico-detalhes">' + escapeHtmlTexto(partes.join('  +  ')) + '</div>';
 }
