@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         // O registro tem que vir ANTES do super.onCreate.
         registerPlugin(BateriaPlugin.class);
         registerPlugin(LicencaPlugin.class);
+        registerPlugin(NotificacaoPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
