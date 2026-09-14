@@ -954,6 +954,13 @@ const DISTANCIA_MINIMA_RUIDO_M = 3;
 // Abaixo dessa velocidade o carro esta parado de verdade (nem passo de
 // gente). Serve pra separar transito devagar de tremida do GPS parado.
 const VELOCIDADE_PARADO_KMH = 2.5;
+// Quanto o carro precisa andar pra valer como "saiu do lugar" e acabar
+// a franquia de espera da bandeirada. Uns metros de tremida do GPS ou
+// um encostadinha pra frente na fila nao podem matar a franquia.
+const DISTANCIA_SAIU_DO_LUGAR_M = 50;
+// Velocidade impossivel num carro: acima disso e erro do GPS, e o
+// pedaco e jogado fora em vez de virar quilometro cobrado.
+const VELOCIDADE_IMPOSSIVEL_MS = 55; // ~200 km/h
 // Acumulador de trecho: guarda os pedacinhos curtos ate darem uma
 // distancia confiavel. Sem isso, andando devagar cada pedacinho era
 // menor que o ruido do GPS e ia pro lixo — a corrida perdia distancia.
@@ -1124,11 +1131,37 @@ function processarNovaPosicao(pos) {
 
       estado.tempoTotalS += tempoDecorridoS;
 
-      const andando = velocidadeKmh >= VELOCIDADE_PARADO_KMH || distanciaM >= DISTANCIA_MINIMA_RUIDO_M;
+      // Salto impossível de posição: o GPS se perdeu. Joga fora a
+      // distância, mas o tempo continua contando, que a corrida está
+      // rodando de qualquer jeito.
+      const saltoAbsurdo = (distanciaM / tempoDecorridoS) > VELOCIDADE_IMPOSSIVEL_MS;
+      const deslocamentoM = saltoAbsurdo ? 0 : distanciaM;
+
+      // A tremida do GPS parado tem o tamanho da margem de erro que o
+      // próprio aparelho informa. Dentro de casa essa margem passa de
+      // 20 metros, e um pulo desses estava entrando como distância
+      // rodada. Então o limite acompanha a margem, em vez de ser fixo.
+      const margemM = (typeof pos.coords.accuracy === 'number' && pos.coords.accuracy > 0)
+        ? pos.coords.accuracy
+        : 0;
+      const limiteRuidoM = Math.max(DISTANCIA_MINIMA_RUIDO_M, margemM * 0.6);
+
+      let andando;
+      if (velocidadeGpsKmh !== null) {
+        // O próprio GPS mede a velocidade, e essa medida quase não
+        // treme com o aparelho parado. Ela manda. Só um deslocamento
+        // bem maior que a margem de erro pode passar por cima dela.
+        const saltoGrande = deslocamentoM >= Math.max(10, margemM * 2);
+        andando = velocidadeGpsKmh >= VELOCIDADE_PARADO_KMH || saltoGrande;
+      } else {
+        // Aparelho não informou velocidade: sobra o deslocamento,
+        // medido contra a margem de erro dele.
+        andando = deslocamentoM >= limiteRuidoM;
+      }
 
       if (andando) {
         // Guarda o pedaço no acumulador em vez de jogar fora.
-        bufferDistanciaM += distanciaM;
+        bufferDistanciaM += deslocamentoM;
         bufferTempoS += tempoDecorridoS;
         if (bufferDistanciaM >= DISTANCIA_MINIMA_RUIDO_M) {
           fecharTrechoRodado();
@@ -1189,12 +1222,16 @@ function cobrancaDoTempoParado(segundosNovos) {
 function fecharTrechoRodado() {
   if (bufferDistanciaM <= 0 && bufferTempoS <= 0) return;
 
-  // O carro saiu do lugar: a franquia de espera da bandeirada acaba
-  // aqui, antes de qualquer conta deste trecho.
-  if (bufferDistanciaM > 0) estado.jaAndou = true;
-
   const distanciaAntes = estado.distanciaTotalKm;
   estado.distanciaTotalKm += bufferDistanciaM / 1000;
+
+  // O carro saiu do lugar de verdade: a franquia de espera da
+  // bandeirada acaba aqui, antes de qualquer conta deste trecho.
+  // Exige uma distância de gente, pra tremida de GPS ou um
+  // encostadinha na fila não matarem a franquia sem motivo.
+  if (estado.distanciaTotalKm * 1000 >= DISTANCIA_SAIU_DO_LUGAR_M) {
+    estado.jaAndou = true;
+  }
 
   // só cobra a partir do km configurado como "incluído na bandeirada" —
   // calcula certo mesmo quando um único trecho cruza essa marca no meio
