@@ -974,6 +974,8 @@ const PRECISAO_MAXIMA_M = 30;
 // preciso um jeito de perceber que o carro saiu. Nenhuma tremida de
 // GPS chega perto disso; um carro andando passa em segundos.
 const FUGA_DA_ANCORA_M = 150;
+// Teto de um unico buraco de contagem, em segundos (meia hora).
+const TETO_DO_BURACO_S = 1800;
 // Acumulador de trecho: guarda os pedacinhos curtos ate darem uma
 // distancia confiavel. Sem isso, andando devagar cada pedacinho era
 // menor que o ruido do GPS e ia pro lixo — a corrida perdia distancia.
@@ -1215,7 +1217,12 @@ function medirPosicao(pos) {
         const passoM = distanciaHaversineMetros(
           ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
 
-        const saltoAbsurdo = (passoM / tempoDecorridoS) > VELOCIDADE_IMPOSSIVEL_MS;
+        // Só dá pra chamar de salto impossível quando houve tempo
+        // suficiente pra medir velocidade. Com as leituras chegando
+        // juntas (volta do segundo plano), a conta daria infinito e a
+        // distância de verdade ia pro lixo.
+        const saltoAbsurdo = tempoDecorridoS >= 1
+          && (passoM / tempoDecorridoS) > VELOCIDADE_IMPOSSIVEL_MS;
         const parouAgora = velocidadeGpsKmh !== null
           ? (!velocidadeDizQueAnda && passoM < limiteRuidoM)
           : (passoM < limiteRuidoM);
@@ -1289,8 +1296,16 @@ function tempoDesdeAUltimaContagem(agoraMs) {
   if (ultimoInstanteMs === null) { ultimoInstanteMs = agoraMs; return null; }
   const segundos = (agoraMs - ultimoInstanteMs) / 1000;
   ultimoInstanteMs = agoraMs;
-  if (segundos <= 0 || segundos >= 120) return null;
-  return segundos;
+  if (segundos <= 0) return null;
+  // Buraco na contagem: o motorista foi pro Waze, a tela apagou, ou o
+  // Android segurou o aplicativo por um tempo. Esse tempo é tempo de
+  // corrida e TEM que ser contado — antes qualquer buraco acima de 2
+  // minutos era jogado fora, e a corrida perdia o valor.
+  //
+  // O teto só existe pra um esquecimento não virar absurdo: se a
+  // corrida ficou aberta a noite inteira, cada buraco entra no máximo
+  // como meia hora, em vez de sumir ou virar uma fortuna.
+  return Math.min(segundos, TETO_DO_BURACO_S);
 }
 
 // O relógio da corrida não pode depender do GPS. Num túnel, num
@@ -1922,11 +1937,31 @@ function mostrarAutorizacoesSePrimeiraVez() {
 
 // Voltando do Android, confere se ele confirmou de verdade.
 document.addEventListener('visibilitychange', function() {
-  if (!document.hidden && document.getElementById('tela-autorizacoes') &&
+  if (document.hidden) return;
+
+  // Voltou do Waze, do mapa ou da tela apagada: acerta o relógio na
+  // hora, sem esperar a próxima batida de 1 segundo, pra o valor da
+  // tela já aparecer certo.
+  if (corridaAtiva) acertarRelogioAgora();
+
+  if (document.getElementById('tela-autorizacoes') &&
       document.getElementById('tela-autorizacoes').style.display === 'flex') {
     conferirAutorizacoes();
   }
 });
+
+function acertarRelogioAgora() {
+  const agoraMs = Date.now();
+  if (ultimoInstanteMs !== null && (agoraMs - ultimoInstanteMs) < 2500) return;
+  const segundos = tempoDesdeAUltimaContagem(agoraMs);
+  if (segundos === null) return;
+  estado.tempoTotalS += segundos;
+  cobrarComoParado(segundos);
+  bufferDistanciaM = 0;
+  bufferTempoS = 0;
+  atualizarTela('Parado / esperando', 'status-esperando');
+  salvarEstadoAtual();
+}
 
 // Diz se estamos rodando dentro do aplicativo instalado (e nao no site
 // de teste aberto pelo navegador).
