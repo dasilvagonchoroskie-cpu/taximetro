@@ -251,6 +251,7 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
+  #marca-versao { opacity: 0.55; font-size: 0.75rem; }
   .metrica-rotulo {
     font-size: 0.6875rem;
     color: var(--texto-fraco);
@@ -546,7 +547,7 @@ function salvarAparenciaNoAparelho() {
   <div class="cabecalho">
     <div>
       <h1>Taxímetro</h1>
-      <p class="marca-app">Fortaleza Digital</p>
+      <p class="marca-app">Fortaleza Digital <span id="marca-versao"></span></p>
     </div>
     <div style="display:flex; gap:4px;">
       <button class="btn-engrenagem" onclick="abrirHistorico()" aria-label="Histórico de corridas">
@@ -1641,6 +1642,12 @@ function abrirNavegacao() {
 // não consegue fabricar chave pra outro celular — e o arquivo repassado
 // no WhatsApp instala, mas fica travado até ser ativado.
 const APP_ID = 'taximetro';
+// A montagem troca isto pelo versionName do build.gradle, pra nunca
+// divergir do que o Android mostra nas informacoes do aplicativo.
+const VERSAO_APP = 'VERSAO_NA_MONTAGEM';
+function versaoParaMostrar() {
+  return VERSAO_APP.indexOf('VERSAO') === 0 ? 'teste' : 'v' + VERSAO_APP;
+}
 const SERVIDOR_LICENCAS = 'https://fortaleza-licencas.fortalezadigitalsecurity.workers.dev';
 const CHAVE_PUBLICA_LICENCA = {"kty":"EC","crv":"P-256","x":"yBHKjFLZZJzoY1l490yRD3ru9ROE03gS9C3XH0Gb0v4","y":"-sa1VYlT3Fvxhh9fJEaav3VO69vM5qiiJ3yE5io-AJw"};
 const CHAVE_LICENCA_SALVA = 'taximetro_licenca';
@@ -2559,6 +2566,9 @@ function reiniciarCorrida() {
 
 document.getElementById('campo-destino').addEventListener('input', atualizarBotaoMaps);
 atualizarBotaoMaps();
+
+const campoVersao = document.getElementById('marca-versao');
+if (campoVersao) campoVersao.textContent = versaoParaMostrar();
 
 atualizarTela(null, null);
 conferirLicencaNaAbertura();
