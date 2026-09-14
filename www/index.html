@@ -722,6 +722,11 @@ function salvarAparenciaNoAparelho() {
       <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:14px;" onclick="abrirAutorizacoes()">Conferir GPS e bateria</button>
       <p class="campo-ajuda">Sem elas o Android desliga o taxímetro quando você sai da tela.</p>
     </div>
+    <div class="campo">
+      <label>Licença deste aparelho</label>
+      <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:14px;" onclick="desativarEsteAparelho()">Desativar e pedir a chave de novo</button>
+      <p class="campo-ajuda">O histórico de corridas e a tarifa continuam guardados. Serve pra reativar com outra chave, ou quando quem vendeu pedir.</p>
+    </div>
     <button class="config-salvar" onclick="salvarConfiguracoes()">Salvar</button>
     <p id="config-msg" class="config-msg"></p>
   </div>
@@ -1885,6 +1890,30 @@ function dataPorExtenso(iso) {
   if (isNaN(d.getTime())) return String(iso);
   const dois = function(n) { return String(n).padStart(2, '0'); };
   return dois(d.getDate()) + '/' + dois(d.getMonth() + 1) + '/' + d.getFullYear();
+}
+
+// Apaga só a liberação guardada. O histórico e a tarifa ficam onde
+// estão. Na próxima abertura o aplicativo pede a chave de novo.
+function desativarEsteAparelho() {
+  if (!confirm('Desativar este aparelho?\n\n' +
+               'O aplicativo vai pedir a chave de ativação de novo na próxima vez ' +
+               'que abrir. Suas corridas e sua tarifa continuam guardadas.')) return;
+  try {
+    localStorage.removeItem(CHAVE_LICENCA_SALVA);
+    localStorage.removeItem(CHAVE_LICENCA_VALIDADE);
+    localStorage.removeItem(CHAVE_LICENCA_CODIGO);
+  } catch (e) {}
+  const msg = document.getElementById('config-msg');
+  if (msg) msg.textContent = 'Desativado. Pedindo a chave...';
+  setTimeout(function() {
+    document.getElementById('tela-config').classList.remove('ativa');
+    document.getElementById('tela-medidor').classList.add('ativa');
+    const campo = document.getElementById('licenca-chave');
+    if (campo) campo.value = '';
+    const recado = document.getElementById('licenca-msg');
+    if (recado) recado.textContent = '';
+    document.getElementById('tela-licenca').style.display = 'flex';
+  }, 700);
 }
 
 // Abre a tela de ativação já com a chave preenchida e um recado. Serve
