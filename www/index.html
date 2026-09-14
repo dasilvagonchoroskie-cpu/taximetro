@@ -263,6 +263,10 @@
 
   /* ---------- Controles ---------- */
   .controles { padding: 20px 20px calc(24px + env(safe-area-inset-bottom, 0)); }
+  .btn-cancelar {
+    color: var(--alerta);
+    border-color: var(--alerta);
+  }
   .btn-grande {
     width: 100%;
     padding: 20px;
@@ -589,6 +593,7 @@ function salvarAparenciaNoAparelho() {
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-4px; margin-right:6px;"><path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg>
       <span id="btn-maps-texto">Abrir no Google Maps</span>
     </button>
+    <button id="btn-cancelar" class="btn-secundario btn-cancelar" onclick="cancelarCorrida()" style="display:none;">Cancelar corrida</button>
     <button id="btn-reiniciar" class="btn-secundario" onclick="reiniciarCorrida()" style="display:none;">Zerar e começar outra corrida</button>
   </div>
 </div>
@@ -1090,6 +1095,11 @@ let ultimaPosicao = null; // { lat, lon, tempoMs, boa }
 // Ponto de referência enquanto o carro está parado. Ver a explicação
 // dentro de processarNovaPosicao().
 let ancoraParado = null; // { lat, lon }
+// Instante da última contagem de tempo. Quem conta pode ser o GPS ou o
+// relógio interno, e os dois usam esta mesma marca pra nunca contar o
+// mesmo segundo duas vezes.
+let ultimoInstanteMs = null;
+let relogioCorrida = null;
 
 let estado = {
   valorTotal: 0,
@@ -1124,7 +1134,29 @@ function atualizarTela(statusTexto, statusClasse) {
 }
 
 function processarNovaPosicao(pos) {
-  document.getElementById('aviso-gps').style.display = 'none';
+  try {
+    medirPosicao(pos);
+  } catch (erro) {
+    // Sem isto, qualquer tropero aqui dentro congelava o taxímetro em
+    // silêncio: o relógio parava, a tela ficava em "Localizando..." e
+    // nem dava pra finalizar a corrida.
+    avisarFalhaNoGps(erro);
+  }
+}
+
+function avisarFalhaNoGps(erro) {
+  const aviso = document.getElementById('aviso-gps');
+  if (aviso) {
+    aviso.style.display = 'block';
+    aviso.textContent = 'Deu problema ao ler a localização: ' +
+      ((erro && erro.message) ? erro.message : 'erro desconhecido') +
+      '. O tempo continua contando. Tire um print desta tela.';
+  }
+}
+
+function medirPosicao(pos) {
+  const aviso = document.getElementById('aviso-gps');
+  if (aviso) aviso.style.display = 'none';
   const agoraMs = Date.now();
   const { latitude, longitude } = pos.coords;
 
@@ -1144,24 +1176,24 @@ function processarNovaPosicao(pos) {
   const velocidadeDizQueAnda = velocidadeGpsKmh !== null
     && velocidadeGpsKmh >= VELOCIDADE_PARADO_KMH;
 
-  if (ultimaPosicao) {
-    const tempoDecorridoS = (agoraMs - ultimaPosicao.tempoMs) / 1000;
+  const tempoDecorridoS = tempoDesdeAUltimaContagem(agoraMs);
 
-    // Ignora saltos absurdos de tempo (celular desligado, app morto pelo
-    // sistema). 120s dá margem pra atualização em segundo plano, que
-    // naturalmente vem mais espaçada.
-    if (tempoDecorridoS > 0 && tempoDecorridoS < 120) {
+  if (tempoDecorridoS !== null) {
+    {
       estado.tempoTotalS += tempoDecorridoS;
 
       // Só mede distância entre duas leituras boas. Leitura ruim serve
       // pro relógio, não pra medir quilômetro.
-      const podeMedir = leituraBoa && ultimaPosicao.boa;
+      const podeMedir = leituraBoa && ultimaPosicao && ultimaPosicao.boa;
       const limiteRuidoM = Math.max(DISTANCIA_MINIMA_RUIDO_M, margemM * 1.5);
 
       let deslocamentoM = 0;
       let andando = false;
 
-      if (podeMedir && ancoraParado) {
+      if (!ultimaPosicao) {
+        // Primeira posição da corrida: não há de onde medir distância
+        // ainda. O tempo já foi contado ali em cima.
+      } else if (podeMedir && ancoraParado) {
         // ---- Carro parado: tudo é medido contra a MESMA âncora ----
         // Medindo de leitura em leitura, a tremida do GPS soma pra
         // sempre: dois metros pra cá, três pra lá, e no fim de meia hora
@@ -1184,6 +1216,7 @@ function processarNovaPosicao(pos) {
         // ---- Carro andando: mede de leitura em leitura ----
         const passoM = distanciaHaversineMetros(
           ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
+
         const saltoAbsurdo = (passoM / tempoDecorridoS) > VELOCIDADE_IMPOSSIVEL_MS;
         const parouAgora = velocidadeGpsKmh !== null
           ? (!velocidadeDizQueAnda && passoM < limiteRuidoM)
@@ -1215,14 +1248,7 @@ function processarNovaPosicao(pos) {
         // Parado: o que estava no acumulador era só tremida, mas o tempo
         // guardado nele é tempo de corrida e tem que ser pago como
         // espera.
-        const segundosParado = tempoDecorridoS + bufferTempoS;
-        const cobrancaParado = cobrancaDoTempoParado(segundosParado);
-        if (!estado.jaAndou) {
-          estado.esperaInicialS = (estado.esperaInicialS || 0) + segundosParado;
-        }
-        estado.valorEspera = (estado.valorEspera || 0) + cobrancaParado;
-        estado.tempoParadoS = (estado.tempoParadoS || 0) + segundosParado;
-        estado.valorTotal += cobrancaParado;
+        cobrarComoParado(tempoDecorridoS + bufferTempoS);
         bufferDistanciaM = 0;
         bufferTempoS = 0;
         atualizarTela('Parado / esperando', 'status-esperando');
@@ -1233,6 +1259,119 @@ function processarNovaPosicao(pos) {
   }
 
   ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs, boa: leituraBoa };
+}
+
+function cobrancaDoTempoParado(segundosNovos) {
+  if (estado.jaAndou) {
+    return (segundosNovos / 60) * CONFIG.taxaEspera;
+  }
+  const incluidoS = (CONFIG.minutosIncluidoNaBandeirada || 0) * 60;
+  const antes = estado.esperaInicialS || 0;
+  const depois = antes + segundosNovos;
+  const cobraveis = Math.max(0, depois - Math.max(incluidoS, antes));
+  return (cobraveis / 60) * CONFIG.taxaEspera;
+}
+
+// Cobra um pedaço de tempo como espera. Usado tanto pelo GPS quanto
+// pelo relógio interno, quando o GPS está calado.
+function cobrarComoParado(segundosParado) {
+  const cobranca = cobrancaDoTempoParado(segundosParado);
+  if (!estado.jaAndou) {
+    estado.esperaInicialS = (estado.esperaInicialS || 0) + segundosParado;
+  }
+  estado.valorEspera = (estado.valorEspera || 0) + cobranca;
+  estado.tempoParadoS = (estado.tempoParadoS || 0) + segundosParado;
+  estado.valorTotal += cobranca;
+}
+
+// Conta o tempo desde a última contagem, seja ela do GPS ou do relógio.
+// Devolve null na primeira vez e quando o buraco for grande demais
+// (celular desligado, app morto pelo sistema).
+function tempoDesdeAUltimaContagem(agoraMs) {
+  if (ultimoInstanteMs === null) { ultimoInstanteMs = agoraMs; return null; }
+  const segundos = (agoraMs - ultimoInstanteMs) / 1000;
+  ultimoInstanteMs = agoraMs;
+  if (segundos <= 0 || segundos >= 120) return null;
+  return segundos;
+}
+
+// O relógio da corrida não pode depender do GPS. Num túnel, num
+// estacionamento coberto ou com o sinal ruim, o aparelho passa minutos
+// sem mandar posição nenhuma — e o tempo de espera tem que continuar
+// correndo do mesmo jeito, que é tempo de trabalho do motorista.
+function ligarRelogioDaCorrida() {
+  desligarRelogioDaCorrida();
+  relogioCorrida = setInterval(function() {
+    if (!corridaAtiva) return;
+    const agoraMs = Date.now();
+    // Se o GPS acabou de contar, deixa com ele.
+    if (ultimoInstanteMs !== null && (agoraMs - ultimoInstanteMs) < 2500) return;
+    const segundos = tempoDesdeAUltimaContagem(agoraMs);
+    if (segundos === null) return;
+    estado.tempoTotalS += segundos;
+    cobrarComoParado(segundos);
+    bufferDistanciaM = 0;
+    bufferTempoS = 0;
+    atualizarTela(
+      ultimaPosicao ? 'Parado / esperando' : 'Sem GPS — contando o tempo',
+      'status-esperando'
+    );
+    salvarEstadoAtual();
+  }, 1000);
+}
+
+function desligarRelogioDaCorrida() {
+  if (relogioCorrida !== null) {
+    clearInterval(relogioCorrida);
+    relogioCorrida = null;
+  }
+}
+
+// Fecha o trecho acumulado: soma a distância no odômetro e cobra o que
+// for MAIOR entre a distância rodada e o tempo gasto nela. Nunca os
+// dois juntos — isso seria cobrar duas vezes o mesmo pedaço da corrida.
+function fecharTrechoRodado() {
+  if (bufferDistanciaM <= 0 && bufferTempoS <= 0) return;
+
+  const distanciaAntes = estado.distanciaTotalKm;
+  estado.distanciaTotalKm += bufferDistanciaM / 1000;
+
+  // O carro saiu do lugar de verdade: a franquia de espera da
+  // bandeirada acaba aqui, antes de qualquer conta deste trecho.
+  // Exige uma distância de gente, pra tremida de GPS ou um
+  // encostadinha na fila não matarem a franquia sem motivo.
+  if (estado.distanciaTotalKm * 1000 >= DISTANCIA_SAIU_DO_LUGAR_M) {
+    estado.jaAndou = true;
+  }
+
+  // só cobra a partir do km configurado como "incluído na bandeirada" —
+  // calcula certo mesmo quando um único trecho cruza essa marca no meio
+  const kmIncluido = CONFIG.kmIncluidoNaBandeirada || 0;
+  const kmCobravel = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntes));
+
+  const porDistancia = kmCobravel * CONFIG.taxaKm;
+  const porTempo = cobrancaDoTempoParado(bufferTempoS);
+
+  // Pra decidir se este trecho vale mais por distância ou por tempo,
+  // compara o valor CHEIO da distância rodada, sem o desconto dos km
+  // incluídos. Senão, dentro dos 1,5 km a distância valeria zero e o
+  // app cobraria tempo de um carro que está andando normal — os km
+  // incluídos deixariam de ser de graça.
+  const porDistanciaCheio = (bufferDistanciaM / 1000) * CONFIG.taxaKm;
+
+  if (porDistanciaCheio >= porTempo) {
+    estado.valorDistancia = (estado.valorDistancia || 0) + porDistancia;
+    estado.valorTotal += porDistancia;
+  } else {
+    // Trecho tão devagar que o minuto rende mais que o quilômetro:
+    // cobra o tempo, como manda o taxímetro.
+    estado.valorEspera = (estado.valorEspera || 0) + porTempo;
+    estado.tempoParadoS = (estado.tempoParadoS || 0) + bufferTempoS;
+    estado.valorTotal += porTempo;
+  }
+
+  bufferDistanciaM = 0;
+  bufferTempoS = 0;
 }
 
 function erroGps(erro) {
@@ -1277,7 +1416,9 @@ function iniciarCorrida() {
   bufferDistanciaM = 0;
   bufferTempoS = 0;
   ancoraParado = null;
+  ultimoInstanteMs = null;
   corridaAtiva = true;
+  ligarRelogioDaCorrida();
 
   atualizarTela('Localizando...', 'status-parado-app');
 
@@ -1314,6 +1455,7 @@ function iniciarCorrida() {
   document.getElementById('btn-principal').textContent = 'Finalizar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-finalizar';
   document.getElementById('btn-reiniciar').style.display = 'none';
+  document.getElementById('btn-cancelar').style.display = 'block';
   document.getElementById('btn-maps').style.display = 'flex';
 
   salvarEstadoAtual();
@@ -1368,6 +1510,12 @@ const APP_ID = 'taximetro';
 const SERVIDOR_LICENCAS = 'https://fortaleza-licencas.fortalezadigitalsecurity.workers.dev';
 const CHAVE_PUBLICA_LICENCA = {"kty":"EC","crv":"P-256","x":"yBHKjFLZZJzoY1l490yRD3ru9ROE03gS9C3XH0Gb0v4","y":"-sa1VYlT3Fvxhh9fJEaav3VO69vM5qiiJ3yE5io-AJw"};
 const CHAVE_LICENCA_SALVA = 'taximetro_licenca';
+const CHAVE_LICENCA_VALIDADE = 'taximetro_licenca_validade';
+const CHAVE_LICENCA_CODIGO = 'taximetro_licenca_chave';
+const CHAVE_DATA_VISTA = 'taximetro_data_vista';
+// Quantos dias antes de vencer o app já tenta renovar sozinho. Assim o
+// cliente que está pagando certo nunca vê tela de bloqueio nenhuma.
+const DIAS_PRA_RENOVAR_ANTES = 5;
 const ALFABETO_CODIGO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem I, O, 0 e 1
 
 let codigoDoAparelho = '';
@@ -1408,7 +1556,14 @@ function calcularCodigoDoAparelho() {
   });
 }
 
-function conferirChaveDeAtivacao(codigo, chaveTexto) {
+// A assinatura cobre "app:aparelho:validade". A validade vai assinada
+// junto de propósito: assim ninguém estica o próprio prazo mexendo no
+// que está guardado no celular.
+//
+// Licença antiga, ativada antes do prazo existir, foi assinada só como
+// "app:aparelho". Por isso a conferência tenta os dois jeitos — quem
+// já estava usando não precisa reativar nada.
+function conferirChaveDeAtivacao(codigo, chaveTexto, validade) {
   const limpa = String(chaveTexto || '').replace(/[^A-Za-z0-9_-]/g, '');
   if (limpa.length < 80) return Promise.resolve(false);
   let assinatura;
@@ -1416,10 +1571,35 @@ function conferirChaveDeAtivacao(codigo, chaveTexto) {
   return crypto.subtle.importKey('jwk', CHAVE_PUBLICA_LICENCA,
       { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify'])
     .then(function(publica) {
-      return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publica,
-        assinatura, new TextEncoder().encode(APP_ID + ':' + codigo));
+      function testar(texto) {
+        return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publica,
+          assinatura, new TextEncoder().encode(texto));
+      }
+      const comValidade = APP_ID + ':' + codigo + ':' + (validade || 'sempre');
+      return testar(comValidade).then(function(ok) {
+        if (ok) return true;
+        if (validade && validade !== 'sempre') return false;
+        return testar(APP_ID + ':' + codigo); // formato antigo
+      });
     })
     .catch(function() { return false; });
+}
+
+function lerGuardado(nome) {
+  try { return localStorage.getItem(nome) || ''; } catch (e) { return ''; }
+}
+function gravarGuardado(nome, valor) {
+  try { localStorage.setItem(nome, valor); } catch (e) {}
+}
+
+// Marca a data mais adiantada que o app já viu. Se o relógio do celular
+// voltar no tempo, foi mexida — e aí a licença com prazo exige passar
+// pelo servidor de novo.
+function relogioFoiPraTras() {
+  const vista = Number(lerGuardado(CHAVE_DATA_VISTA) || 0);
+  const agora = Date.now();
+  if (agora > vista) { gravarGuardado(CHAVE_DATA_VISTA, String(agora)); return false; }
+  return (vista - agora) > 86400000; // mais de um dia pra trás
 }
 
 function copiarCodigoAparelho() {
@@ -1444,11 +1624,16 @@ function formatarChaveDigitada(campo) {
 }
 
 // Guarda a liberação no aparelho e solta o aplicativo.
-function guardarLicenca(assinatura) {
+function guardarLicenca(assinatura, validade, chave) {
   const msg = document.getElementById('licenca-msg');
-  try { localStorage.setItem(CHAVE_LICENCA_SALVA, assinatura); } catch (e) {}
+  gravarGuardado(CHAVE_LICENCA_SALVA, assinatura);
+  gravarGuardado(CHAVE_LICENCA_VALIDADE, validade || 'sempre');
+  if (chave) gravarGuardado(CHAVE_LICENCA_CODIGO, chave);
+  gravarGuardado(CHAVE_DATA_VISTA, String(Date.now()));
   msg.style.color = 'var(--destaque)';
-  msg.textContent = 'Ativado! Bom trabalho.';
+  msg.textContent = (validade && validade !== 'sempre')
+    ? 'Ativado até ' + dataPorExtenso(validade) + '. Bom trabalho.'
+    : 'Ativado! Bom trabalho.';
   setTimeout(function() {
     document.getElementById('tela-licenca').style.display = 'none';
     mostrarAutorizacoesSePrimeiraVez();
@@ -1473,8 +1658,8 @@ function ativarLicenca() {
   const comprida = digitada.replace(/[^A-Za-z0-9_-]/g, '');
   if (comprida.length >= 80) {
     msg.textContent = 'Conferindo...';
-    conferirChaveDeAtivacao(codigoDoAparelho, comprida).then(function(valida) {
-      if (valida) { guardarLicenca(comprida); return; }
+    conferirChaveDeAtivacao(codigoDoAparelho, comprida, 'sempre').then(function(valida) {
+      if (valida) { guardarLicenca(comprida, 'sempre', ''); return; }
       msg.style.color = 'var(--alerta)';
       msg.textContent = 'Essa chave não serve neste aparelho.';
     });
@@ -1506,14 +1691,15 @@ function ativarLicenca() {
         msg.textContent = (resposta && resposta.motivo) || 'Não deu para ativar.';
         return;
       }
-      return conferirChaveDeAtivacao(codigoDoAparelho, resposta.assinatura).then(function(valida) {
-        if (!valida) {
-          msg.style.color = 'var(--alerta)';
-          msg.textContent = 'A liberação veio errada. Fale com quem te passou a chave.';
-          return;
-        }
-        guardarLicenca(resposta.assinatura);
-      });
+      return conferirChaveDeAtivacao(codigoDoAparelho, resposta.assinatura, resposta.validade)
+        .then(function(valida) {
+          if (!valida) {
+            msg.style.color = 'var(--alerta)';
+            msg.textContent = 'A liberação veio errada. Fale com quem te passou a chave.';
+            return;
+          }
+          guardarLicenca(resposta.assinatura, resposta.validade, chave);
+        });
     })
     .catch(function() {
       msg.style.color = 'var(--alerta)';
@@ -1524,6 +1710,54 @@ function ativarLicenca() {
 // Confere a licença toda vez que o app abre. Como a chave é amarrada ao
 // código deste aparelho, copiar o conteúdo salvo pra outro celular não
 // adianta: lá o código é outro e a assinatura não bate.
+function dataPorExtenso(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const dois = function(n) { return String(n).padStart(2, '0'); };
+  return dois(d.getDate()) + '/' + dois(d.getMonth() + 1) + '/' + d.getFullYear();
+}
+
+// Abre a tela de ativação já com a chave preenchida e um recado. Serve
+// pro caso de licença vencida: ele só precisa ligar a internet e tocar
+// em Ativar.
+function pedirRenovacaoNaTela(recado) {
+  const tela = document.getElementById('tela-licenca');
+  const campo = document.getElementById('licenca-chave');
+  const msg = document.getElementById('licenca-msg');
+  const guardada = lerGuardado(CHAVE_LICENCA_CODIGO);
+  if (campo && guardada) campo.value = guardada;
+  if (msg) {
+    msg.style.color = 'var(--alerta)';
+    msg.textContent = recado;
+  }
+  tela.style.display = 'flex';
+}
+
+// Volta no servidor com a chave que já está guardada e pega uma
+// assinatura nova, com a validade que estiver valendo agora.
+function renovarLicencaNoServidor() {
+  const chave = lerGuardado(CHAVE_LICENCA_CODIGO);
+  if (!chave || !codigoDoAparelho) return Promise.resolve(false);
+  return fetch(SERVIDOR_LICENCAS + '/ativar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chave: chave, app_id: APP_ID, aparelho: codigoDoAparelho })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(resposta) {
+      if (!resposta || !resposta.ok || !resposta.assinatura) return false;
+      return conferirChaveDeAtivacao(codigoDoAparelho, resposta.assinatura, resposta.validade)
+        .then(function(valida) {
+          if (!valida) return false;
+          gravarGuardado(CHAVE_LICENCA_SALVA, resposta.assinatura);
+          gravarGuardado(CHAVE_LICENCA_VALIDADE, resposta.validade || 'sempre');
+          gravarGuardado(CHAVE_DATA_VISTA, String(Date.now()));
+          return true;
+        });
+    })
+    .catch(function() { return false; });
+}
+
 function conferirLicencaNaAbertura() {
   if (!estaNoApp()) return; // site de teste no navegador roda livre
   calcularCodigoDoAparelho().then(function(codigo) {
@@ -1531,18 +1765,57 @@ function conferirLicencaNaAbertura() {
     const alvo = document.getElementById('licenca-codigo');
     if (alvo) alvo.textContent = codigo || 'não identificado';
 
-    let salva = '';
-    try { salva = localStorage.getItem(CHAVE_LICENCA_SALVA) || ''; } catch (e) {}
+    const salva = lerGuardado(CHAVE_LICENCA_SALVA);
+    const validade = lerGuardado(CHAVE_LICENCA_VALIDADE) || 'sempre';
     if (!salva || !codigo) {
       document.getElementById('tela-licenca').style.display = 'flex';
       return;
     }
-    conferirChaveDeAtivacao(codigo, salva).then(function(valida) {
-      if (valida) {
-        mostrarAutorizacoesSePrimeiraVez();
-      } else {
+
+    conferirChaveDeAtivacao(codigo, salva, validade).then(function(valida) {
+      if (!valida) {
         document.getElementById('tela-licenca').style.display = 'flex';
+        return;
       }
+
+      // Licença sem prazo: nunca mais precisa de internet.
+      if (validade === 'sempre') {
+        mostrarAutorizacoesSePrimeiraVez();
+        return;
+      }
+
+      const fimMs = new Date(validade).getTime();
+      const diasQueFaltam = (fimMs - Date.now()) / 86400000;
+      const mexeram = relogioFoiPraTras();
+
+      // Ainda longe de vencer e o relógio confere: segue a vida offline.
+      if (diasQueFaltam > DIAS_PRA_RENOVAR_ANTES && !mexeram) {
+        mostrarAutorizacoesSePrimeiraVez();
+        return;
+      }
+
+      // Perto de vencer, vencida, ou relógio mexido: tenta renovar.
+      renovarLicencaNoServidor().then(function(renovou) {
+        if (renovou) {
+          mostrarAutorizacoesSePrimeiraVez();
+          return;
+        }
+        // Não renovou. Se ainda não venceu, deixa trabalhar e avisa.
+        if (diasQueFaltam > 0 && !mexeram) {
+          mostrarAutorizacoesSePrimeiraVez();
+          const aviso = document.getElementById('aviso-gps');
+          if (aviso) {
+            aviso.style.display = 'block';
+            aviso.textContent = 'Seu acesso vence em ' + dataPorExtenso(validade) +
+              '. Abra o aplicativo com a internet ligada pra renovar sozinho.';
+          }
+          return;
+        }
+        pedirRenovacaoNaTela(mexeram
+          ? 'A data do celular não confere. Ligue a internet e toque em Ativar.'
+          : 'Seu acesso venceu em ' + dataPorExtenso(validade) +
+            '. Ligue a internet e toque em Ativar. Se não liberar, fale com quem te vendeu o aplicativo.');
+      });
     });
   });
 }
@@ -1693,7 +1966,26 @@ function atualizarBotaoMaps() {
   }
 }
 
+// Passageiro desistiu, ou a corrida foi aberta sem querer: joga fora
+// sem gravar nada no histórico e sem pedir forma de pagamento.
+function cancelarCorrida() {
+  if (!confirm('Cancelar esta corrida?\n\nEla não vai ser gravada no histórico e o valor volta pra zero.')) return;
+
+  desligarRelogioDaCorrida();
+  if (watchId !== null) {
+    if (window.BackgroundGeolocationPlugin) {
+      try { window.BackgroundGeolocationPlugin.removeWatcher({ id: watchId }); } catch (e) {}
+    } else {
+      navigator.geolocation.clearWatch(watchId);
+    }
+    watchId = null;
+  }
+  corridaAtiva = false;
+  reiniciarCorrida();
+}
+
 function finalizarCorrida() {
+  desligarRelogioDaCorrida();
   // O último pedaço rodado não pode ficar pra trás no acumulador.
   fecharTrechoRodado();
 
@@ -1801,6 +2093,7 @@ function concluirFinalizacao(formaPagamento) {
   document.getElementById('btn-principal').textContent = 'Iniciar corrida';
   document.getElementById('btn-principal').className = 'btn-grande btn-iniciar';
   document.getElementById('btn-reiniciar').style.display = 'block';
+  document.getElementById('btn-cancelar').style.display = 'none';
   document.getElementById('btn-maps').style.display = 'none';
   atualizarTela('Corrida finalizada', 'status-parado-app');
 
@@ -2077,6 +2370,7 @@ function reiniciarCorrida() {
   document.getElementById('campo-origem').value = '';
   document.getElementById('campo-destino').value = '';
   document.getElementById('btn-reiniciar').style.display = 'none';
+  document.getElementById('btn-cancelar').style.display = 'none';
   atualizarTela('Pronto pra iniciar', 'status-parado-app');
   salvarEstadoAtual();
 }
@@ -2090,10 +2384,12 @@ function reiniciarCorrida() {
       atualizarTela('Corrida em andamento', 'status-parado-app');
       corridaAtiva = false; // exige tocar em "Iniciar" de novo pra recomeçar o GPS (mais seguro que retomar sozinho)
       document.getElementById('btn-reiniciar').style.display = 'block';
+      document.getElementById('btn-cancelar').style.display = 'none';
     } else if (salvo) {
       estado = salvo.estado;
       atualizarTela(null, null);
       document.getElementById('btn-reiniciar').style.display = estado.valorTotal > 0 ? 'block' : 'none';
+      document.getElementById('btn-cancelar').style.display = 'none';
     }
   } catch (e) {}
 })();
