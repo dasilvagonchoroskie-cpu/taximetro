@@ -961,6 +961,14 @@ const DISTANCIA_SAIU_DO_LUGAR_M = 50;
 // Velocidade impossivel num carro: acima disso e erro do GPS, e o
 // pedaco e jogado fora em vez de virar quilometro cobrado.
 const VELOCIDADE_IMPOSSIVEL_MS = 55; // ~200 km/h
+// Leitura com margem de erro pior que isso nao serve pra medir
+// distancia. O celular comeca localizando pela rede (margem enorme) e
+// so depois o GPS firma — esse pulo entre as duas nao pode virar km.
+const PRECISAO_MAXIMA_M = 30;
+// Valvula de seguranca: se o aparelho nunca informar velocidade, e
+// preciso um jeito de perceber que o carro saiu. Nenhuma tremida de
+// GPS chega perto disso; um carro andando passa em segundos.
+const FUGA_DA_ANCORA_M = 150;
 // Acumulador de trecho: guarda os pedacinhos curtos ate darem uma
 // distancia confiavel. Sem isso, andando devagar cada pedacinho era
 // menor que o ruido do GPS e ia pro lixo — a corrida perdia distancia.
@@ -1076,7 +1084,10 @@ function gerarPayloadPix(chave, valor, nome, cidade) {
 // ===================== Estado da corrida =====================
 let corridaAtiva = false;
 let watchId = null;
-let ultimaPosicao = null; // { lat, lon, tempoMs }
+let ultimaPosicao = null; // { lat, lon, tempoMs, boa }
+// Ponto de referência enquanto o carro está parado. Ver a explicação
+// dentro de processarNovaPosicao().
+let ancoraParado = null; // { lat, lon }
 
 let estado = {
   valorTotal: 0,
@@ -1115,48 +1126,73 @@ function processarNovaPosicao(pos) {
   const agoraMs = Date.now();
   const { latitude, longitude } = pos.coords;
 
+  // Margem de erro que o próprio aparelho informa. Navegador antigo que
+  // não informa nada entra como se fosse leitura boa.
+  const margemM = (typeof pos.coords.accuracy === 'number' && pos.coords.accuracy > 0)
+    ? pos.coords.accuracy
+    : 0;
+  const leituraBoa = margemM === 0 || margemM <= PRECISAO_MAXIMA_M;
+
+  // Velocidade medida pelo próprio GPS. É o sinal mais confiável que
+  // existe aqui: com o aparelho parado ela fica em zero, enquanto a
+  // posição treme sem parar.
+  const velocidadeGpsKmh = (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0)
+    ? pos.coords.speed * 3.6
+    : null;
+  const velocidadeDizQueAnda = velocidadeGpsKmh !== null
+    && velocidadeGpsKmh >= VELOCIDADE_PARADO_KMH;
+
   if (ultimaPosicao) {
-    const distanciaM = distanciaHaversineMetros(ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
     const tempoDecorridoS = (agoraMs - ultimaPosicao.tempoMs) / 1000;
 
-    if (tempoDecorridoS > 0 && tempoDecorridoS < 120) { // ignora saltos absurdos de tempo (celular desligado, app matado pelo sistema etc.) — 120s da margem pra atualizações em segundo plano, que naturalmente vêm mais espaçadas
-      // A velocidade que o próprio GPS informa é bem mais confiável que
-      // a calculada entre dois pontos, que treme junto com o erro do
-      // aparelho. Quando o aparelho não informa, cai na calculada.
-      const velocidadeGpsKmh = (typeof pos.coords.speed === 'number' && pos.coords.speed >= 0)
-        ? pos.coords.speed * 3.6
-        : null;
-      const velocidadeCalculadaKmh = (distanciaM / 1000) / (tempoDecorridoS / 3600);
-      const velocidadeKmh = velocidadeGpsKmh !== null ? velocidadeGpsKmh : velocidadeCalculadaKmh;
-
+    // Ignora saltos absurdos de tempo (celular desligado, app morto pelo
+    // sistema). 120s dá margem pra atualização em segundo plano, que
+    // naturalmente vem mais espaçada.
+    if (tempoDecorridoS > 0 && tempoDecorridoS < 120) {
       estado.tempoTotalS += tempoDecorridoS;
 
-      // Salto impossível de posição: o GPS se perdeu. Joga fora a
-      // distância, mas o tempo continua contando, que a corrida está
-      // rodando de qualquer jeito.
-      const saltoAbsurdo = (distanciaM / tempoDecorridoS) > VELOCIDADE_IMPOSSIVEL_MS;
-      const deslocamentoM = saltoAbsurdo ? 0 : distanciaM;
+      // Só mede distância entre duas leituras boas. Leitura ruim serve
+      // pro relógio, não pra medir quilômetro.
+      const podeMedir = leituraBoa && ultimaPosicao.boa;
+      const limiteRuidoM = Math.max(DISTANCIA_MINIMA_RUIDO_M, margemM * 1.5);
 
-      // A tremida do GPS parado tem o tamanho da margem de erro que o
-      // próprio aparelho informa. Dentro de casa essa margem passa de
-      // 20 metros, e um pulo desses estava entrando como distância
-      // rodada. Então o limite acompanha a margem, em vez de ser fixo.
-      const margemM = (typeof pos.coords.accuracy === 'number' && pos.coords.accuracy > 0)
-        ? pos.coords.accuracy
-        : 0;
-      const limiteRuidoM = Math.max(DISTANCIA_MINIMA_RUIDO_M, margemM * 0.6);
+      let deslocamentoM = 0;
+      let andando = false;
 
-      let andando;
-      if (velocidadeGpsKmh !== null) {
-        // O próprio GPS mede a velocidade, e essa medida quase não
-        // treme com o aparelho parado. Ela manda. Só um deslocamento
-        // bem maior que a margem de erro pode passar por cima dela.
-        const saltoGrande = deslocamentoM >= Math.max(10, margemM * 2);
-        andando = velocidadeGpsKmh >= VELOCIDADE_PARADO_KMH || saltoGrande;
-      } else {
-        // Aparelho não informou velocidade: sobra o deslocamento,
-        // medido contra a margem de erro dele.
-        andando = deslocamentoM >= limiteRuidoM;
+      if (podeMedir && ancoraParado) {
+        // ---- Carro parado: tudo é medido contra a MESMA âncora ----
+        // Medindo de leitura em leitura, a tremida do GPS soma pra
+        // sempre: dois metros pra cá, três pra lá, e no fim de meia hora
+        // parado o odômetro marcou um quilômetro que o carro não andou.
+        // Contra um ponto fixo isso não acontece: a tremida vai e volta
+        // em torno da âncora e a distância continua perto de zero.
+        const daAncoraM = distanciaHaversineMetros(
+          ancoraParado.lat, ancoraParado.lon, latitude, longitude);
+
+        const saiuMesmo = velocidadeGpsKmh !== null
+          ? (velocidadeDizQueAnda || daAncoraM >= FUGA_DA_ANCORA_M)
+          : (daAncoraM >= limiteRuidoM);
+
+        if (saiuMesmo) {
+          deslocamentoM = daAncoraM;
+          andando = true;
+          ancoraParado = null;
+        }
+      } else if (podeMedir) {
+        // ---- Carro andando: mede de leitura em leitura ----
+        const passoM = distanciaHaversineMetros(
+          ultimaPosicao.lat, ultimaPosicao.lon, latitude, longitude);
+        const saltoAbsurdo = (passoM / tempoDecorridoS) > VELOCIDADE_IMPOSSIVEL_MS;
+        const parouAgora = velocidadeGpsKmh !== null
+          ? (!velocidadeDizQueAnda && passoM < limiteRuidoM)
+          : (passoM < limiteRuidoM);
+
+        if (parouAgora) {
+          ancoraParado = { lat: latitude, lon: longitude };
+        } else if (!saltoAbsurdo) {
+          deslocamentoM = passoM;
+          andando = true;
+        }
       }
 
       if (andando) {
@@ -1166,14 +1202,17 @@ function processarNovaPosicao(pos) {
         if (bufferDistanciaM >= DISTANCIA_MINIMA_RUIDO_M) {
           fecharTrechoRodado();
         }
+        const velocidadeMostrada = velocidadeGpsKmh !== null
+          ? velocidadeGpsKmh
+          : (deslocamentoM / 1000) / (tempoDecorridoS / 3600);
         atualizarTela(
-          velocidadeKmh >= CONFIG.limiarVelocidadeKmh ? 'Em movimento' : 'Devagar / trânsito',
-          velocidadeKmh >= CONFIG.limiarVelocidadeKmh ? 'status-movimento' : 'status-esperando'
+          velocidadeMostrada >= CONFIG.limiarVelocidadeKmh ? 'Em movimento' : 'Devagar / trânsito',
+          velocidadeMostrada >= CONFIG.limiarVelocidadeKmh ? 'status-movimento' : 'status-esperando'
         );
       } else {
-        // Parado de verdade: o que estava no acumulador era só tremida
-        // do GPS, mas o tempo guardado nele é tempo de corrida e tem que
-        // ser pago como espera.
+        // Parado: o que estava no acumulador era só tremida, mas o tempo
+        // guardado nele é tempo de corrida e tem que ser pago como
+        // espera.
         const segundosParado = tempoDecorridoS + bufferTempoS;
         const cobrancaParado = cobrancaDoTempoParado(segundosParado);
         if (!estado.jaAndou) {
@@ -1191,76 +1230,7 @@ function processarNovaPosicao(pos) {
     }
   }
 
-  ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs };
-}
-
-// Quanto custa um pedaço de tempo parado.
-//
-// A franquia de espera da bandeirada vale SÓ NA ABERTURA da corrida:
-// motorista chegou na casa do cliente, abriu a corrida e ficou
-// esperando. Assim que o carro sai do lugar, essa franquia acaba pra
-// sempre naquela corrida, e todo minuto parado daí pra frente é
-// cobrado desde o primeiro segundo (semáforo, trânsito, parada no
-// caminho).
-//
-// Quando um pedaço da espera inicial cruza a marca no meio, só a
-// parte de depois é cobrada.
-function cobrancaDoTempoParado(segundosNovos) {
-  if (estado.jaAndou) {
-    return (segundosNovos / 60) * CONFIG.taxaEspera;
-  }
-  const incluidoS = (CONFIG.minutosIncluidoNaBandeirada || 0) * 60;
-  const antes = estado.esperaInicialS || 0;
-  const depois = antes + segundosNovos;
-  const cobraveis = Math.max(0, depois - Math.max(incluidoS, antes));
-  return (cobraveis / 60) * CONFIG.taxaEspera;
-}
-
-// Fecha o trecho acumulado: soma a distância no odômetro e cobra o que
-// for MAIOR entre a distância rodada e o tempo gasto nela. Nunca os
-// dois juntos — isso seria cobrar duas vezes o mesmo pedaço da corrida.
-function fecharTrechoRodado() {
-  if (bufferDistanciaM <= 0 && bufferTempoS <= 0) return;
-
-  const distanciaAntes = estado.distanciaTotalKm;
-  estado.distanciaTotalKm += bufferDistanciaM / 1000;
-
-  // O carro saiu do lugar de verdade: a franquia de espera da
-  // bandeirada acaba aqui, antes de qualquer conta deste trecho.
-  // Exige uma distância de gente, pra tremida de GPS ou um
-  // encostadinha na fila não matarem a franquia sem motivo.
-  if (estado.distanciaTotalKm * 1000 >= DISTANCIA_SAIU_DO_LUGAR_M) {
-    estado.jaAndou = true;
-  }
-
-  // só cobra a partir do km configurado como "incluído na bandeirada" —
-  // calcula certo mesmo quando um único trecho cruza essa marca no meio
-  const kmIncluido = CONFIG.kmIncluidoNaBandeirada || 0;
-  const kmCobravel = Math.max(0, estado.distanciaTotalKm - Math.max(kmIncluido, distanciaAntes));
-
-  const porDistancia = kmCobravel * CONFIG.taxaKm;
-  const porTempo = cobrancaDoTempoParado(bufferTempoS);
-
-  // Pra decidir se este trecho vale mais por distância ou por tempo,
-  // compara o valor CHEIO da distância rodada, sem o desconto dos km
-  // incluídos. Senão, dentro dos 1,5 km a distância valeria zero e o
-  // app cobraria tempo de um carro que está andando normal — os km
-  // incluídos deixariam de ser de graça.
-  const porDistanciaCheio = (bufferDistanciaM / 1000) * CONFIG.taxaKm;
-
-  if (porDistanciaCheio >= porTempo) {
-    estado.valorDistancia = (estado.valorDistancia || 0) + porDistancia;
-    estado.valorTotal += porDistancia;
-  } else {
-    // Trecho tão devagar que o minuto rende mais que o quilômetro:
-    // cobra o tempo, como manda o taxímetro.
-    estado.valorEspera = (estado.valorEspera || 0) + porTempo;
-    estado.tempoParadoS = (estado.tempoParadoS || 0) + bufferTempoS;
-    estado.valorTotal += porTempo;
-  }
-
-  bufferDistanciaM = 0;
-  bufferTempoS = 0;
+  ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs, boa: leituraBoa };
 }
 
 function erroGps(erro) {
@@ -1304,6 +1274,7 @@ function iniciarCorrida() {
   ultimaPosicao = null;
   bufferDistanciaM = 0;
   bufferTempoS = 0;
+  ancoraParado = null;
   corridaAtiva = true;
 
   atualizarTela('Localizando...', 'status-parado-app');
@@ -2100,6 +2071,7 @@ function reiniciarCorrida() {
   ultimaPosicao = null;
   bufferDistanciaM = 0;
   bufferTempoS = 0;
+  ancoraParado = null;
   document.getElementById('campo-origem').value = '';
   document.getElementById('campo-destino').value = '';
   document.getElementById('btn-reiniciar').style.display = 'none';
