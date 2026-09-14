@@ -667,9 +667,9 @@ function salvarAparenciaNoAparelho() {
       <p class="campo-ajuda">Só começa a cobrar valor por km rodado depois de passar dessa distância. Coloque 0 pra cobrar por km desde o início.</p>
     </div>
     <div class="campo">
-      <label>Minutos incluídos na bandeirada (não cobra espera até aqui)</label>
+      <label>Minutos de espera incluídos na abertura da corrida</label>
       <input type="number" id="cfg-minutos-incluido" inputmode="decimal" step="1" min="0">
-      <p class="campo-ajuda">Só começa a cobrar o minuto parado depois desse tempo de espera somado. Coloque 0 pra cobrar espera desde o início.</p>
+      <p class="campo-ajuda">Vale só enquanto o carro ainda não saiu do lugar: abriu a corrida na porta do cliente e ficou esperando. Assim que começa a andar, essa franquia acaba e todo minuto parado passa a ser cobrado desde o primeiro segundo. Coloque 0 pra cobrar espera desde o início.</p>
     </div>
     <div class="campo">
       <label>Valor por km rodado</label>
@@ -1143,6 +1143,9 @@ function processarNovaPosicao(pos) {
         // ser pago como espera.
         const segundosParado = tempoDecorridoS + bufferTempoS;
         const cobrancaParado = cobrancaDoTempoParado(segundosParado);
+        if (!estado.jaAndou) {
+          estado.esperaInicialS = (estado.esperaInicialS || 0) + segundosParado;
+        }
         estado.valorEspera = (estado.valorEspera || 0) + cobrancaParado;
         estado.tempoParadoS = (estado.tempoParadoS || 0) + segundosParado;
         estado.valorTotal += cobrancaParado;
@@ -1158,13 +1161,23 @@ function processarNovaPosicao(pos) {
   ultimaPosicao = { lat: latitude, lon: longitude, tempoMs: agoraMs };
 }
 
-// Quanto custa um pedaço de tempo parado, respeitando os minutos que
-// já vêm incluídos na bandeirada. Funciona igual aos km incluídos: os
-// primeiros minutos de espera da corrida são de graça, e quando um
-// pedaço cruza essa marca no meio, só a parte de depois é cobrada.
+// Quanto custa um pedaço de tempo parado.
+//
+// A franquia de espera da bandeirada vale SÓ NA ABERTURA da corrida:
+// motorista chegou na casa do cliente, abriu a corrida e ficou
+// esperando. Assim que o carro sai do lugar, essa franquia acaba pra
+// sempre naquela corrida, e todo minuto parado daí pra frente é
+// cobrado desde o primeiro segundo (semáforo, trânsito, parada no
+// caminho).
+//
+// Quando um pedaço da espera inicial cruza a marca no meio, só a
+// parte de depois é cobrada.
 function cobrancaDoTempoParado(segundosNovos) {
+  if (estado.jaAndou) {
+    return (segundosNovos / 60) * CONFIG.taxaEspera;
+  }
   const incluidoS = (CONFIG.minutosIncluidoNaBandeirada || 0) * 60;
-  const antes = estado.tempoParadoS || 0;
+  const antes = estado.esperaInicialS || 0;
   const depois = antes + segundosNovos;
   const cobraveis = Math.max(0, depois - Math.max(incluidoS, antes));
   return (cobraveis / 60) * CONFIG.taxaEspera;
@@ -1175,6 +1188,10 @@ function cobrancaDoTempoParado(segundosNovos) {
 // dois juntos — isso seria cobrar duas vezes o mesmo pedaço da corrida.
 function fecharTrechoRodado() {
   if (bufferDistanciaM <= 0 && bufferTempoS <= 0) return;
+
+  // O carro saiu do lugar: a franquia de espera da bandeirada acaba
+  // aqui, antes de qualquer conta deste trecho.
+  if (bufferDistanciaM > 0) estado.jaAndou = true;
 
   const distanciaAntes = estado.distanciaTotalKm;
   estado.distanciaTotalKm += bufferDistanciaM / 1000;
@@ -1187,7 +1204,14 @@ function fecharTrechoRodado() {
   const porDistancia = kmCobravel * CONFIG.taxaKm;
   const porTempo = cobrancaDoTempoParado(bufferTempoS);
 
-  if (porDistancia >= porTempo) {
+  // Pra decidir se este trecho vale mais por distância ou por tempo,
+  // compara o valor CHEIO da distância rodada, sem o desconto dos km
+  // incluídos. Senão, dentro dos 1,5 km a distância valeria zero e o
+  // app cobraria tempo de um carro que está andando normal — os km
+  // incluídos deixariam de ser de graça.
+  const porDistanciaCheio = (bufferDistanciaM / 1000) * CONFIG.taxaKm;
+
+  if (porDistanciaCheio >= porTempo) {
     estado.valorDistancia = (estado.valorDistancia || 0) + porDistancia;
     estado.valorTotal += porDistancia;
   } else {
@@ -1234,6 +1258,8 @@ function iniciarCorrida() {
     valorDistancia: 0,
     valorEspera: 0,
     tempoParadoS: 0,
+    esperaInicialS: 0,
+    jaAndou: false,
     distanciaTotalKm: 0,
     tempoTotalS: 0,
     ultimaAtualizacaoMs: Date.now()
@@ -1749,6 +1775,7 @@ function concluirFinalizacao(formaPagamento) {
       taxaEsperaUsada: CONFIG.taxaEspera,
       kmIncluidoUsado: CONFIG.kmIncluidoNaBandeirada || 0,
       minutosIncluidoUsado: CONFIG.minutosIncluidoNaBandeirada || 0,
+      esperaInicialS: estado.esperaInicialS || 0,
       trajeto: montarTrajeto(),
       origem: document.getElementById('campo-origem').value.trim(),
       destino: document.getElementById('campo-destino').value.trim(),
@@ -1856,10 +1883,11 @@ function detalharConta(item) {
     partes.push(kmCobrados.toFixed(2).replace('.', ',') + ' km R$ ' + formatarMoeda(item.valorDistancia));
   }
   if (item.valorEspera > 0) {
-    const minInclusos = item.minutosIncluidoUsado || 0;
-    const inclusos = minInclusos > 0
-      ? ' (' + String(minInclusos).replace('.', ',') + ' min inclusos)'
-      : '';
+    const francaS = Math.min(
+      Number(item.esperaInicialS || 0),
+      (Number(item.minutosIncluidoUsado || 0)) * 60
+    );
+    const inclusos = francaS > 0 ? ' (' + formatarTempo(francaS) + ' inclusos)' : '';
     partes.push('parado ' + formatarTempo(item.tempoParadoS || 0) + inclusos +
                 ' R$ ' + formatarMoeda(item.valorEspera));
   }
@@ -2030,7 +2058,8 @@ function montarTrajeto() {
 
 function reiniciarCorrida() {
   estado = { valorTotal: 0, bandeirada: 0, valorDistancia: 0, valorEspera: 0,
-             tempoParadoS: 0, distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
+             tempoParadoS: 0, esperaInicialS: 0, jaAndou: false,
+             distanciaTotalKm: 0, tempoTotalS: 0, ultimaAtualizacaoMs: null };
   ultimaPosicao = null;
   bufferDistanciaM = 0;
   bufferTempoS = 0;
