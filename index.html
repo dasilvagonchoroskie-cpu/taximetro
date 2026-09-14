@@ -1189,6 +1189,15 @@ function avisarFalhaNoGps(erro) {
 function medirPosicao(pos) {
   const aviso = document.getElementById('aviso-gps');
   if (aviso) aviso.style.display = 'none';
+
+  // Sem corrida aberta, nada aqui conta. Ao finalizar ou cancelar, o
+  // GPS ainda manda uma ou duas posições atrasadas antes de desligar
+  // de verdade, e elas estavam somando segundos numa corrida que já
+  // não existe — era o 00:02 que aparecia na tela zerada.
+  if (!corridaAtiva) {
+    ultimoInstanteMs = null;
+    return;
+  }
   const agoraMs = Date.now();
   const { latitude, longitude } = pos.coords;
 
@@ -1209,10 +1218,28 @@ function medirPosicao(pos) {
     && velocidadeGpsKmh >= VELOCIDADE_PARADO_KMH;
 
   // Velocimétro: usa a velocidade medida pelo próprio GPS, que é a
-  // mesma que o Waze mostra. Abaixo do limiar de carro parado, mostra
-  // zero em vez de ficar tremendo em 1 ou 2 km/h.
+  // mesma que o Waze mostra.
+  //
+  // A leitura crua pula de um segundo pro outro, e um número pulando
+  // na tela do carro incomoda e não ajuda. Então o valor mostrado
+  // acompanha a leitura nova com peso 0,4 e segura 0,6 do que já
+  // estava — suaviza sem ficar pra trás.
+  //
+  // Abaixo do limiar de carro parado vai direto pra zero, sem suavizar:
+  // parou é parado, e não pode ficar mostrando 3 km/h por 5 segundos.
   if (leituraBoa && velocidadeGpsKmh !== null) {
-    velocidadeAtualKmh = velocidadeGpsKmh < VELOCIDADE_PARADO_KMH ? 0 : velocidadeGpsKmh;
+    if (velocidadeGpsKmh < VELOCIDADE_PARADO_KMH) {
+      velocidadeAtualKmh = 0;
+    } else if (velocidadeAtualKmh === null
+               || Math.abs(velocidadeGpsKmh - velocidadeAtualKmh) > 8) {
+      // Mudança grande é acelerada ou freada de verdade: acompanha na
+      // hora, sem enrolar.
+      velocidadeAtualKmh = velocidadeGpsKmh;
+    } else {
+      // Diferença pequena é tremida do GPS: aí suaviza, pra o número
+      // não ficar pulando na cara do motorista.
+      velocidadeAtualKmh = (velocidadeAtualKmh * 0.5) + (velocidadeGpsKmh * 0.5);
+    }
   }
 
   const tempoDecorridoS = tempoDesdeAUltimaContagem(agoraMs);
@@ -2530,6 +2557,8 @@ function reiniciarCorrida() {
   bufferDistanciaM = 0;
   bufferTempoS = 0;
   ancoraParado = null;
+  fugasSeguidas = 0;
+  ultimoInstanteMs = null;
   document.getElementById('campo-origem').value = '';
   document.getElementById('campo-destino').value = '';
   document.getElementById('btn-reiniciar').style.display = 'none';
