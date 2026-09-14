@@ -678,6 +678,14 @@ function salvarAparenciaNoAparelho() {
       <p class="campo-ajuda">Só começa a cobrar valor por km rodado depois de passar dessa distância. Coloque 0 pra cobrar por km desde o início.</p>
     </div>
     <div class="campo">
+      <label>Aplicativo de navegação</label>
+      <select id="cfg-navegador">
+        <option value="waze">Waze</option>
+        <option value="maps">Google Maps</option>
+      </select>
+      <p class="campo-ajuda">É o que abre quando você toca no botão da rota. Se o escolhido não estiver instalado, o aplicativo tenta o outro sozinho.</p>
+    </div>
+    <div class="campo">
       <label>Minutos de espera incluídos na abertura da corrida</label>
       <input type="number" id="cfg-minutos-incluido" inputmode="decimal" step="1" min="0">
       <p class="campo-ajuda">Vale só enquanto o carro ainda não saiu do lugar: abriu a corrida na porta do cliente e ficou esperando. Assim que começa a andar, essa franquia acaba e todo minuto parado passa a ser cobrado desde o primeiro segundo. Coloque 0 pra cobrar espera desde o início.</p>
@@ -826,6 +834,7 @@ const CONFIG_PADRAO = {
   horaFimNoite: 6, // até essa hora (0-23) ainda é bandeira 2
   kmIncluidoNaBandeirada: 1.5, // primeiros X km não cobram valor por km, só depois disso
   minutosIncluidoNaBandeirada: 5, // primeiros X minutos parado não cobram espera
+  navegador: 'waze', // qual aplicativo abre a rota: 'waze' ou 'maps'
   taxaKm: 2.80,
   taxaEspera: 0.55, // por minuto parado
   limiarVelocidadeKmh: 5
@@ -859,6 +868,7 @@ function preencherFormularioConfig() {
   document.getElementById('cfg-hora-fim-noite').value = CONFIG.horaFimNoite;
   document.getElementById('cfg-km-incluido').value = CONFIG.kmIncluidoNaBandeirada;
   document.getElementById('cfg-minutos-incluido').value = CONFIG.minutosIncluidoNaBandeirada;
+  document.getElementById('cfg-navegador').value = CONFIG.navegador || 'waze';
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
@@ -875,6 +885,7 @@ function salvarConfiguracoes() {
   const horaFimNoite = parseInt(document.getElementById('cfg-hora-fim-noite').value, 10);
   const kmIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-km-incluido').value);
   const minutosIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-minutos-incluido').value);
+  const navegador = document.getElementById('cfg-navegador').value === 'maps' ? 'maps' : 'waze';
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
@@ -894,9 +905,14 @@ function salvarConfiguracoes() {
     horaFimNoite: isNaN(horaFimNoite) ? CONFIG_PADRAO.horaFimNoite : horaFimNoite,
     kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
     minutosIncluidoNaBandeirada: isNaN(minutosIncluidoNaBandeirada) ? 0 : minutosIncluidoNaBandeirada,
+    navegador: navegador,
     taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix, tipoChavePix
   };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
+
+  // O botão da rota carrega o nome do aplicativo escolhido, então tem
+  // que acompanhar a troca na hora.
+  atualizarBotaoMaps();
 
   const msg = document.getElementById('config-msg');
   msg.textContent = 'Salvo!';
@@ -1568,6 +1584,14 @@ function iniciarCorrida() {
 // "Maps URLs" do Google) — quem calcula a rota e o proprio Google Maps
 // do celular. Nao precisa de servidor nosso, nem de chave de API, nem
 // de cadastro: o app continua 100% sem servidor.
+function navegadorEscolhido() {
+  return CONFIG.navegador === 'maps' ? 'maps' : 'waze';
+}
+
+function nomeDoNavegador() {
+  return navegadorEscolhido() === 'maps' ? 'Google Maps' : 'Waze';
+}
+
 function abrirNavegacao() {
   const destino = document.getElementById('campo-destino').value.trim();
 
@@ -1578,24 +1602,34 @@ function abrirNavegacao() {
   }
 
   const consulta = encodeURIComponent(destino);
+  const querMaps = navegadorEscolhido() === 'maps';
 
   if (!estaNoApp()) {
-    // Site de teste no navegador: endereco normal do Waze.
-    window.location.href = 'https://waze.com/ul?q=' + consulta + '&navigate=yes';
+    // Site de teste no navegador: endereco normal da internet.
+    window.location.href = querMaps
+      ? 'https://www.google.com/maps/dir/?api=1&destination=' + consulta + '&travelmode=driving'
+      : 'https://waze.com/ul?q=' + consulta + '&navigate=yes';
     return;
   }
 
-  // Dentro do app instalado: chama o APLICATIVO do Waze direto, ja
-  // navegando. O Waze sempre parte de onde o carro esta agora, que e o
-  // certo numa corrida em andamento.
-  window.location.href = 'waze://?q=' + consulta + '&navigate=yes';
+  // Dentro do app instalado: chama o APLICATIVO direto, ja navegando.
+  // Os dois sempre partem de onde o carro esta agora, que e o certo
+  // numa corrida em andamento.
+  const escolhido = querMaps
+    ? 'google.navigation:q=' + consulta + '&mode=d'
+    : 'waze://?q=' + consulta + '&navigate=yes';
+  const reserva = querMaps
+    ? 'waze://?q=' + consulta + '&navigate=yes'
+    : 'google.navigation:q=' + consulta + '&mode=d';
 
-  // Rede de seguranca: se o Waze nao abrir (nao instalado), a tela do
-  // taximetro continua visivel. Nesse caso cai na navegacao do Google
-  // Maps, pra ele nunca ficar sem rota no meio do trabalho.
+  window.location.href = escolhido;
+
+  // Rede de seguranca: se o escolhido nao abrir (nao esta instalado), a
+  // tela do taximetro continua visivel. Nesse caso tenta o outro, pra
+  // ele nunca ficar sem rota no meio do trabalho.
   setTimeout(function() {
     if (!document.hidden) {
-      window.location.href = 'google.navigation:q=' + consulta + '&mode=d';
+      window.location.href = reserva;
     }
   }, 2500);
 }
@@ -2084,7 +2118,7 @@ function atualizarBotaoMaps() {
     alvo.textContent = 'Abrir o mapa';
   } else {
     const nome = destino.length > 18 ? destino.substring(0, 18) + '...' : destino;
-    alvo.textContent = 'Ir até ' + nome + ' no Waze';
+    alvo.textContent = 'Ir até ' + nome + ' no ' + nomeDoNavegador();
   }
 }
 
