@@ -718,6 +718,45 @@ function salvarAparenciaNoAparelho() {
       <p id="cfg-chave-pix-ajuda" class="campo-ajuda"></p>
     </div>
     <div class="campo">
+      <label>Nome do motorista</label>
+      <input type="text" id="cfg-motorista-nome" placeholder="Como aparece na CNH">
+    </div>
+    <div class="campo">
+      <label>Número da CNH</label>
+      <input type="text" id="cfg-motorista-cnh" inputmode="numeric" placeholder="11 dígitos">
+    </div>
+    <div class="campo">
+      <label>Categoria da CNH</label>
+      <input type="text" id="cfg-cnh-categoria" placeholder="Ex.: B" maxlength="4">
+    </div>
+    <div class="campo">
+      <label>Validade da CNH</label>
+      <input type="date" id="cfg-cnh-validade" onchange="avisarValidadeCnh()">
+      <p id="cfg-cnh-aviso" class="campo-ajuda"></p>
+    </div>
+
+    <div class="campo">
+      <label>Marca do veículo</label>
+      <input type="text" id="cfg-veiculo-marca" placeholder="Ex.: Chevrolet">
+    </div>
+    <div class="campo">
+      <label>Modelo</label>
+      <input type="text" id="cfg-veiculo-modelo" placeholder="Ex.: Onix">
+    </div>
+    <div class="campo">
+      <label>Placa</label>
+      <input type="text" id="cfg-veiculo-placa" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase;">
+    </div>
+    <div class="campo">
+      <label>Cor</label>
+      <input type="text" id="cfg-veiculo-cor" placeholder="Ex.: Prata">
+    </div>
+    <div class="campo">
+      <label>Ano</label>
+      <input type="text" id="cfg-veiculo-ano" inputmode="numeric" placeholder="Ex.: 2019" maxlength="4">
+    </div>
+
+    <div class="campo">
       <label>Autorizações do Android</label>
       <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:14px;" onclick="abrirAutorizacoes()">Conferir GPS e bateria</button>
       <p class="campo-ajuda">Sem elas o Android desliga o taxímetro quando você sai da tela.</p>
@@ -841,6 +880,17 @@ const CONFIG_PADRAO = {
   kmIncluidoNaBandeirada: 1.5, // primeiros X km não cobram valor por km, só depois disso
   minutosIncluidoNaBandeirada: 5, // primeiros X minutos parado não cobram espera
   navegador: 'waze', // qual aplicativo abre a rota: 'waze' ou 'maps'
+  // Dados do motorista e do carro. Aparecem no comprovante em PDF, que e
+  // o que o passageiro leva e o que a fiscalizacao pede.
+  motoristaNome: '',
+  motoristaCnh: '',
+  cnhCategoria: '',
+  cnhValidade: '',
+  veiculoMarca: '',
+  veiculoModelo: '',
+  veiculoPlaca: '',
+  veiculoCor: '',
+  veiculoAno: '',
   taxaKm: 2.80,
   taxaEspera: 0.55, // por minuto parado
   limiarVelocidadeKmh: 5
@@ -867,6 +917,62 @@ function carregarConfiguracoes() {
 
 let CONFIG = carregarConfiguracoes();
 
+const CAMPOS_MOTORISTA = [
+  ['cfg-motorista-nome', 'motoristaNome'],
+  ['cfg-motorista-cnh', 'motoristaCnh'],
+  ['cfg-cnh-categoria', 'cnhCategoria'],
+  ['cfg-cnh-validade', 'cnhValidade'],
+  ['cfg-veiculo-marca', 'veiculoMarca'],
+  ['cfg-veiculo-modelo', 'veiculoModelo'],
+  ['cfg-veiculo-placa', 'veiculoPlaca'],
+  ['cfg-veiculo-cor', 'veiculoCor'],
+  ['cfg-veiculo-ano', 'veiculoAno']
+];
+
+// CNH vencida e multa grave e carro parado. O aplicativo avisa com
+// antecedencia, que e quando ainda da tempo de resolver.
+function avisarValidadeCnh() {
+  const aviso = document.getElementById('cfg-cnh-aviso');
+  const campo = document.getElementById('cfg-cnh-validade');
+  if (!aviso || !campo) return;
+  if (!campo.value) { aviso.textContent = ''; aviso.style.color = ''; return; }
+  const fim = new Date(campo.value + 'T12:00:00');
+  if (isNaN(fim.getTime())) { aviso.textContent = ''; return; }
+  const dias = Math.floor((fim.getTime() - Date.now()) / 86400000);
+  if (dias < 0) {
+    aviso.style.color = 'var(--alerta)';
+    aviso.textContent = 'ATENÇÃO: sua CNH está vencida.';
+  } else if (dias <= 30) {
+    aviso.style.color = 'var(--aviso)';
+    aviso.textContent = 'Sua CNH vence em ' + dias + ' dia(s). Já dá pra renovar.';
+  } else {
+    aviso.style.color = '';
+    aviso.textContent = '';
+  }
+}
+
+// "Chevrolet Onix Prata 2019 — ABC1D23"
+function veiculoEmTexto() {
+  const partes = [CONFIG.veiculoMarca, CONFIG.veiculoModelo, CONFIG.veiculoCor, CONFIG.veiculoAno]
+    .filter(function(x) { return x; });
+  const descricao = partes.join(' ');
+  if (CONFIG.veiculoPlaca) {
+    return descricao ? descricao + ' — ' + CONFIG.veiculoPlaca : CONFIG.veiculoPlaca;
+  }
+  return descricao;
+}
+
+// "José da Silva — CNH 12345678901 (B)"
+function motoristaEmTexto() {
+  if (!CONFIG.motoristaNome && !CONFIG.motoristaCnh) return '';
+  let texto = CONFIG.motoristaNome || '';
+  if (CONFIG.motoristaCnh) {
+    texto += (texto ? ' — ' : '') + 'CNH ' + CONFIG.motoristaCnh;
+    if (CONFIG.cnhCategoria) texto += ' (' + CONFIG.cnhCategoria + ')';
+  }
+  return texto;
+}
+
 function preencherFormularioConfig() {
   document.getElementById('cfg-bandeirada-dia').value = CONFIG.bandeiradaDia;
   document.getElementById('cfg-bandeirada-noite').value = CONFIG.bandeiradaNoite;
@@ -875,6 +981,11 @@ function preencherFormularioConfig() {
   document.getElementById('cfg-km-incluido').value = CONFIG.kmIncluidoNaBandeirada;
   document.getElementById('cfg-minutos-incluido').value = CONFIG.minutosIncluidoNaBandeirada;
   document.getElementById('cfg-navegador').value = CONFIG.navegador || 'waze';
+  CAMPOS_MOTORISTA.forEach(function(par) {
+    const el = document.getElementById(par[0]);
+    if (el) el.value = CONFIG[par[1]] || '';
+  });
+  avisarValidadeCnh();
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
@@ -892,6 +1003,13 @@ function salvarConfiguracoes() {
   const kmIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-km-incluido').value);
   const minutosIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-minutos-incluido').value);
   const navegador = document.getElementById('cfg-navegador').value === 'maps' ? 'maps' : 'waze';
+  const dadosMotorista = {};
+  CAMPOS_MOTORISTA.forEach(function(par) {
+    const el = document.getElementById(par[0]);
+    let valor = el ? el.value.trim() : '';
+    if (par[1] === 'veiculoPlaca' || par[1] === 'cnhCategoria') valor = valor.toUpperCase();
+    dadosMotorista[par[1]] = valor;
+  });
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
@@ -912,6 +1030,7 @@ function salvarConfiguracoes() {
     kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
     minutosIncluidoNaBandeirada: isNaN(minutosIncluidoNaBandeirada) ? 0 : minutosIncluidoNaBandeirada,
     navegador: navegador,
+    ...dadosMotorista,
     taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix, tipoChavePix
   };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
@@ -2520,7 +2639,17 @@ function montarPdfHistorico(historico) {
   doc.text('Gerado em ' + new Date().toLocaleString('pt-BR'), 14, 25);
   doc.text(historico.length + ' corrida(s) — Total: R$ ' + formatarMoeda(totalValor), 14, 31);
 
-  let y = 42;
+  // Motorista e veiculo no cabecalho: e o que o passageiro confere no
+  // recibo e o que a fiscalizacao pede.
+  let linhaExtra = 31;
+  const textoMotorista = motoristaEmTexto();
+  const textoVeiculo = veiculoEmTexto();
+  if (textoMotorista) { linhaExtra += 6; doc.text(textoMotorista, 14, linhaExtra); }
+  if (textoVeiculo) { linhaExtra += 6; doc.text('Veículo: ' + textoVeiculo, 14, linhaExtra); }
+
+  // A tabela comeca depois do cabecalho, que cresce se o motorista
+  // tiver preenchido os dados dele e do carro.
+  let y = linhaExtra + 11;
   doc.setFontSize(9);
   doc.text('Data', 14, y);
   doc.text('Trajeto', 42, y);
