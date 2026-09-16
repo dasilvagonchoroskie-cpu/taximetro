@@ -553,6 +553,9 @@ function salvarAparenciaNoAparelho() {
       <button class="btn-engrenagem" onclick="abrirHistorico()" aria-label="Histórico de corridas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v5h5"/><path d="M3.05 13a9 9 0 1 0 .5-4.5L3 8"/><path d="M12 7v5l3 3"/></svg>
       </button>
+      <button class="btn-engrenagem" onclick="abrirMotorista()" aria-label="Motorista e veículo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 16l1.5-4.5A2 2 0 0 1 8.4 10h7.2a2 2 0 0 1 1.9 1.5L19 16"/><path d="M4 16h16v3h-3v-1H7v1H4z"/><circle cx="7.5" cy="17.5" r="0.8"/><circle cx="16.5" cy="17.5" r="0.8"/></svg>
+      </button>
       <button class="btn-engrenagem" onclick="abrirConfiguracoes()" aria-label="Configurações">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5" y1="6" x2="19" y2="6"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="12" x2="19" y2="12"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><line x1="5" y1="18" x2="19" y2="18"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -602,6 +605,61 @@ function salvarAparenciaNoAparelho() {
 </div>
 
 <!-- ===================== TELA DE CONFIGURAÇÕES ===================== -->
+
+<!-- ================= MOTORISTA E VEÍCULO ================= -->
+<div id="tela-motorista" class="tela">
+  <div class="cabecalho">
+    <h1>Motorista e veículo</h1>
+    <button class="btn-engrenagem" onclick="fecharMotorista()" aria-label="Fechar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="config-conteudo">
+    <p class="campo-ajuda" style="margin-bottom:18px;">Estes dados saem no comprovante em PDF que você entrega ao passageiro, e são os que a fiscalização pede.</p>
+    <div class="campo">
+      <label>Nome do motorista</label>
+      <input type="text" id="cfg-motorista-nome" placeholder="Como aparece na CNH">
+    </div>
+    <div class="campo">
+      <label>Número da CNH</label>
+      <input type="text" id="cfg-motorista-cnh" inputmode="numeric" placeholder="11 dígitos">
+    </div>
+    <div class="campo">
+      <label>Categoria da CNH</label>
+      <input type="text" id="cfg-cnh-categoria" placeholder="Ex.: B" maxlength="4">
+    </div>
+    <div class="campo">
+      <label>Validade da CNH</label>
+      <input type="date" id="cfg-cnh-validade" onchange="avisarValidadeCnh()">
+      <p id="cfg-cnh-aviso" class="campo-ajuda"></p>
+    </div>
+
+    <div class="campo">
+      <label>Marca do veículo</label>
+      <input type="text" id="cfg-veiculo-marca" placeholder="Ex.: Chevrolet">
+    </div>
+    <div class="campo">
+      <label>Modelo</label>
+      <input type="text" id="cfg-veiculo-modelo" placeholder="Ex.: Onix">
+    </div>
+    <div class="campo">
+      <label>Placa</label>
+      <input type="text" id="cfg-veiculo-placa" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase;">
+    </div>
+    <div class="campo">
+      <label>Cor</label>
+      <input type="text" id="cfg-veiculo-cor" placeholder="Ex.: Prata">
+    </div>
+    <div class="campo">
+      <label>Ano</label>
+      <input type="text" id="cfg-veiculo-ano" inputmode="numeric" placeholder="Ex.: 2019" maxlength="4">
+    </div>
+
+    <button class="config-salvar" onclick="salvarMotorista()">Salvar</button>
+    <p id="motorista-msg" class="config-msg"></p>
+  </div>
+</div>
+
 <div id="tela-config" class="tela">
   <div class="cabecalho">
     <h1>Configurações</h1>
@@ -715,45 +773,6 @@ function salvarAparenciaNoAparelho() {
       <input type="text" id="cfg-chave-pix" placeholder="Digite a chave" oninput="conferirChavePix()">
       <p id="cfg-chave-pix-ajuda" class="campo-ajuda"></p>
     </div>
-    <div class="campo">
-      <label>Nome do motorista</label>
-      <input type="text" id="cfg-motorista-nome" placeholder="Como aparece na CNH">
-    </div>
-    <div class="campo">
-      <label>Número da CNH</label>
-      <input type="text" id="cfg-motorista-cnh" inputmode="numeric" placeholder="11 dígitos">
-    </div>
-    <div class="campo">
-      <label>Categoria da CNH</label>
-      <input type="text" id="cfg-cnh-categoria" placeholder="Ex.: B" maxlength="4">
-    </div>
-    <div class="campo">
-      <label>Validade da CNH</label>
-      <input type="date" id="cfg-cnh-validade" onchange="avisarValidadeCnh()">
-      <p id="cfg-cnh-aviso" class="campo-ajuda"></p>
-    </div>
-
-    <div class="campo">
-      <label>Marca do veículo</label>
-      <input type="text" id="cfg-veiculo-marca" placeholder="Ex.: Chevrolet">
-    </div>
-    <div class="campo">
-      <label>Modelo</label>
-      <input type="text" id="cfg-veiculo-modelo" placeholder="Ex.: Onix">
-    </div>
-    <div class="campo">
-      <label>Placa</label>
-      <input type="text" id="cfg-veiculo-placa" placeholder="ABC1D23" maxlength="8" style="text-transform:uppercase;">
-    </div>
-    <div class="campo">
-      <label>Cor</label>
-      <input type="text" id="cfg-veiculo-cor" placeholder="Ex.: Prata">
-    </div>
-    <div class="campo">
-      <label>Ano</label>
-      <input type="text" id="cfg-veiculo-ano" inputmode="numeric" placeholder="Ex.: 2019" maxlength="4">
-    </div>
-
     <div class="campo">
       <label>Autorizações do Android</label>
       <button type="button" class="autorizacao-btn" style="width:100%;border-radius:4px;padding:14px;" onclick="abrirAutorizacoes()">Conferir GPS e bateria</button>
@@ -971,6 +990,39 @@ function motoristaEmTexto() {
   return texto;
 }
 
+// ---------------- Tela de motorista e veiculo ----------------
+function abrirMotorista() {
+  CAMPOS_MOTORISTA.forEach(function(par) {
+    const el = document.getElementById(par[0]);
+    if (el) el.value = CONFIG[par[1]] || '';
+  });
+  avisarValidadeCnh();
+  document.getElementById('motorista-msg').textContent = '';
+  document.getElementById('tela-medidor').classList.remove('ativa');
+  document.getElementById('tela-motorista').classList.add('ativa');
+}
+
+function fecharMotorista() {
+  document.getElementById('tela-motorista').classList.remove('ativa');
+  document.getElementById('tela-medidor').classList.add('ativa');
+}
+
+function salvarMotorista() {
+  const novos = {};
+  CAMPOS_MOTORISTA.forEach(function(par) {
+    const el = document.getElementById(par[0]);
+    let valor = el ? el.value.trim() : '';
+    if (par[1] === 'veiculoPlaca' || par[1] === 'cnhCategoria') valor = valor.toUpperCase();
+    novos[par[1]] = valor;
+  });
+  CONFIG = Object.assign({}, CONFIG, novos);
+  try { localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG)); } catch (e) {}
+  const msg = document.getElementById('motorista-msg');
+  msg.textContent = 'Salvo!';
+  avisarValidadeCnh();
+  setTimeout(function() { msg.textContent = ''; fecharMotorista(); }, 900);
+}
+
 function preencherFormularioConfig() {
   document.getElementById('cfg-bandeirada-dia').value = CONFIG.bandeiradaDia;
   document.getElementById('cfg-bandeirada-noite').value = CONFIG.bandeiradaNoite;
@@ -979,11 +1031,7 @@ function preencherFormularioConfig() {
   document.getElementById('cfg-km-incluido').value = CONFIG.kmIncluidoNaBandeirada;
   document.getElementById('cfg-minutos-incluido').value = CONFIG.minutosIncluidoNaBandeirada;
   document.getElementById('cfg-navegador').value = CONFIG.navegador || 'waze';
-  CAMPOS_MOTORISTA.forEach(function(par) {
-    const el = document.getElementById(par[0]);
-    if (el) el.value = CONFIG[par[1]] || '';
-  });
-  avisarValidadeCnh();
+
   document.getElementById('cfg-taxa-km').value = CONFIG.taxaKm;
   document.getElementById('cfg-taxa-espera').value = CONFIG.taxaEspera;
   document.getElementById('cfg-limiar-velocidade').value = CONFIG.limiarVelocidadeKmh;
@@ -1001,13 +1049,7 @@ function salvarConfiguracoes() {
   const kmIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-km-incluido').value);
   const minutosIncluidoNaBandeirada = parseFloat(document.getElementById('cfg-minutos-incluido').value);
   const navegador = document.getElementById('cfg-navegador').value === 'maps' ? 'maps' : 'waze';
-  const dadosMotorista = {};
-  CAMPOS_MOTORISTA.forEach(function(par) {
-    const el = document.getElementById(par[0]);
-    let valor = el ? el.value.trim() : '';
-    if (par[1] === 'veiculoPlaca' || par[1] === 'cnhCategoria') valor = valor.toUpperCase();
-    dadosMotorista[par[1]] = valor;
-  });
+
   const taxaKm = parseFloat(document.getElementById('cfg-taxa-km').value) || 0;
   const taxaEspera = parseFloat(document.getElementById('cfg-taxa-espera').value) || 0;
   const limiarVelocidadeKmh = parseFloat(document.getElementById('cfg-limiar-velocidade').value) || 0;
@@ -1028,7 +1070,17 @@ function salvarConfiguracoes() {
     kmIncluidoNaBandeirada: isNaN(kmIncluidoNaBandeirada) ? 0 : kmIncluidoNaBandeirada,
     minutosIncluidoNaBandeirada: isNaN(minutosIncluidoNaBandeirada) ? 0 : minutosIncluidoNaBandeirada,
     navegador: navegador,
-    ...dadosMotorista,
+    // Os dados do motorista tem tela propria; aqui eles sao apenas
+    // preservados, para salvar a tarifa nao apagar o cadastro dele.
+    motoristaNome: CONFIG.motoristaNome || '',
+    motoristaCnh: CONFIG.motoristaCnh || '',
+    cnhCategoria: CONFIG.cnhCategoria || '',
+    cnhValidade: CONFIG.cnhValidade || '',
+    veiculoMarca: CONFIG.veiculoMarca || '',
+    veiculoModelo: CONFIG.veiculoModelo || '',
+    veiculoPlaca: CONFIG.veiculoPlaca || '',
+    veiculoCor: CONFIG.veiculoCor || '',
+    veiculoAno: CONFIG.veiculoAno || '',
     taxaKm, taxaEspera, limiarVelocidadeKmh, chavePix, tipoChavePix
   };
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(CONFIG));
