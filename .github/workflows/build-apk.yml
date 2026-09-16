@@ -21,7 +21,21 @@ jobs:
           java-version: '17'
 
       - name: Preparar Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          # A acao android-actions/setup-android passou a falhar. A maquina
+          # do GitHub ja vem com o SDK do Android instalado, entao basta
+          # apontar para ele e aceitar as licencas.
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "ERRO: SDK do Android nao encontrado na maquina."
+            exit 1
+          fi
+          echo "SDK em: $SDK"
+          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          echo "licencas aceitas"
+
 
       - name: Preparar Node.js
         uses: actions/setup-node@v4
