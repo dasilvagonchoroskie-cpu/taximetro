@@ -2682,47 +2682,96 @@ function exportarHistoricoPdf() {
 }
 
 function montarPdfHistorico(historico) {
+  // Relatorio no formato que banco e contador esperam ver: cabecalho
+  // com periodo, motorista e veiculo repetido em toda pagina, corrida
+  // por corrida numerada, e total ao final.
+  //
+  // O que ele NAO e: comprovante de renda por si so. Quem emite e o
+  // proprio motorista, entao o banco trata como declaracao propria. O
+  // valor dele e servir de base para o contador emitir a DECORE, e
+  // para bater com o extrato bancario.
   const doc = new window.jsPDFLib();
   const totalValor = historico.reduce(function(soma, item) { return soma + (item.valor || 0); }, 0);
+  const totalKm = historico.reduce(function(soma, item) { return soma + (item.distanciaKm || 0); }, 0);
 
-  doc.setFontSize(16);
-  doc.text('Taxímetro — Histórico de corridas', 14, 18);
-  doc.setFontSize(10);
-  doc.text('Gerado em ' + new Date().toLocaleString('pt-BR'), 14, 25);
-  doc.text(historico.length + ' corrida(s) — Total: R$ ' + formatarMoeda(totalValor), 14, 31);
+  // Periodo coberto, tirado das proprias corridas.
+  const datas = historico.map(function(i) { return new Date(i.data).getTime(); })
+                         .filter(function(n) { return !isNaN(n); });
+  const deTexto = datas.length ? new Date(Math.min.apply(null, datas)).toLocaleDateString('pt-BR') : '-';
+  const ateTexto = datas.length ? new Date(Math.max.apply(null, datas)).toLocaleDateString('pt-BR') : '-';
 
-  // Motorista e veiculo no cabecalho: e o que o passageiro confere no
-  // recibo e o que a fiscalizacao pede.
-  let linhaExtra = 31;
   const textoMotorista = motoristaEmTexto();
   const textoVeiculo = veiculoEmTexto();
-  if (textoMotorista) { linhaExtra += 6; doc.text(textoMotorista, 14, linhaExtra); }
-  if (textoVeiculo) { linhaExtra += 6; doc.text('Veículo: ' + textoVeiculo, 14, linhaExtra); }
 
-  // A tabela comeca depois do cabecalho, que cresce se o motorista
-  // tiver preenchido os dados dele e do carro.
-  let y = linhaExtra + 11;
-  doc.setFontSize(9);
-  doc.text('Data', 14, y);
-  doc.text('Trajeto', 42, y);
-  doc.text('Km', 118, y);
-  doc.text('Tempo', 135, y);
-  doc.text('Pagto', 158, y);
-  doc.text('Valor', 178, y);
-  y += 4;
-  doc.line(14, y, 196, y);
-  y += 5;
+  function cabecalho() {
+    doc.setFontSize(14);
+    doc.text('Relatório de corridas', 14, 16);
+    doc.setFontSize(9);
+    let linha = 22;
+    doc.text('Período entre ' + deTexto + ' e ' + ateTexto, 14, linha); linha += 5;
+    if (CONFIG.motoristaNome) { doc.text('Motorista: ' + CONFIG.motoristaNome, 14, linha); linha += 5; }
+    if (CONFIG.motoristaCnh) {
+      doc.text('CNH: ' + CONFIG.motoristaCnh +
+        (CONFIG.cnhCategoria ? ' (' + CONFIG.cnhCategoria + ')' : ''), 14, linha);
+      linha += 5;
+    }
+    if (textoVeiculo) { doc.text('Veículo: ' + textoVeiculo, 14, linha); linha += 5; }
+    doc.setFontSize(8);
+    doc.text('Fortaleza Digital Security — Taxímetro ' + versaoParaMostrar(), 14, linha);
+    linha += 6;
+    doc.line(14, linha, 196, linha);
+    linha += 5;
+
+    doc.setFontSize(8);
+    doc.text('Nº', 14, linha);
+    doc.text('Data e hora', 24, linha);
+    doc.text('Partida → Destino', 56, linha);
+    doc.text('Km', 140, linha);
+    doc.text('Tempo', 152, linha);
+    doc.text('Pagto', 168, linha);
+    doc.text('Valor', 182, linha);
+    linha += 3;
+    doc.line(14, linha, 196, linha);
+    return linha + 5;
+  }
+
+  let y = cabecalho();
+  let numero = 0;
 
   historico.forEach(function(item) {
-    if (y > 280) { doc.addPage(); y = 18; }
-    doc.text(formatarDataHistorico(item.data), 14, y);
-    doc.text(String(item.trajeto || '-').substring(0, 32), 42, y);
-    doc.text(Number(item.distanciaKm || 0).toFixed(2).replace('.', ','), 118, y);
-    doc.text(formatarTempo(item.tempoS || 0), 135, y);
-    doc.text(ROTULO_PAGAMENTO[item.formaPagamento] || '-', 158, y);
-    doc.text('R$ ' + formatarMoeda(item.valor || 0), 178, y);
-    y += 6;
+    if (y > 275) { doc.addPage(); y = cabecalho(); }
+    numero += 1;
+    doc.setFontSize(8);
+    doc.text(String(numero), 14, y);
+    doc.text(formatarDataHistorico(item.data), 24, y);
+
+    // Trajeto pode nao caber numa linha: quebra em duas, sem cortar
+    // informacao que o contador pode precisar.
+    const trajeto = String(item.trajeto || '-');
+    const pedacos = doc.splitTextToSize(trajeto, 80);
+    doc.text(pedacos.slice(0, 2), 56, y);
+
+    doc.text(Number(item.distanciaKm || 0).toFixed(2).replace('.', ','), 140, y);
+    doc.text(formatarTempo(item.tempoS || 0), 152, y);
+    doc.text(ROTULO_PAGAMENTO[item.formaPagamento] || '-', 168, y);
+    doc.text('R$ ' + formatarMoeda(item.valor || 0), 182, y);
+
+    y += (pedacos.length > 1 ? 10 : 6);
   });
+
+  // Fechamento
+  if (y > 265) { doc.addPage(); y = cabecalho(); }
+  y += 2;
+  doc.line(14, y, 196, y);
+  y += 6;
+  doc.setFontSize(10);
+  doc.text(numero + ' corrida(s)', 14, y);
+  doc.text(totalKm.toFixed(2).replace('.', ',') + ' km', 140, y);
+  doc.text('Total: R$ ' + formatarMoeda(totalValor), 168, y);
+  y += 8;
+  doc.setFontSize(7);
+  doc.text('Emitido em ' + new Date().toLocaleString('pt-BR') +
+           ' pelo próprio motorista, a partir dos registros do aplicativo.', 14, y);
 
   return doc;
 }
