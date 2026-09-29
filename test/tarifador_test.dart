@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taximetro/core/constantes.dart';
 import 'package:taximetro/core/tarifador.dart';
 
 /// Tarifa do Fabiano: R\$ 3,00/km, R\$ 0,55/min, 1,5 km e 5 min incluidos.
@@ -50,5 +51,17 @@ void main() {
     expect(t.kmFranquiaUsada(0.8), closeTo(0.8, 1e-9));
     expect(t.kmFranquiaUsada(9), 1.5);
     expect(t.minutosFranquiaUsados(10 * 60), 5);
+  });
+
+  // A versao Flutter nao le as configuracoes do app antigo: depois de
+  // atualizar, o taximetro comeca com a tarifa PADRAO. Ela tem que ser a
+  // tarifa confirmada do Fabiano, senao ele cobra errado sem perceber.
+  test('tarifa padrao e a tarifa confirmada do Fabiano', () {
+    expect(ConfigPadrao.bandeiradaDia, 10.00);
+    expect(ConfigPadrao.bandeiradaNoite, 20.00);
+    expect(ConfigPadrao.taxaKm, 3.00);
+    expect(ConfigPadrao.taxaEspera, 0.55);
+    expect(ConfigPadrao.kmIncluidoNaBandeirada, 1.5);
+    expect(ConfigPadrao.minutosIncluidoNaBandeirada, 5);
   });
 }
