@@ -1,25 +1,21 @@
 # Taxímetro — Fortaleza Digital Security
 
-Versão 3, em **Flutter**. Substitui a versão web (Capacitor), que fica
-guardada no ramo `legado-capacitor` e na etiqueta `capacitor-v2.4`.
+Taxímetro por GPS que calcula a corrida por **distância e tempo**, funciona
+**sem internet** e é ativado por chave (servidor de licenças).
 
-## Cobrança
-- Bandeirada (R$ 10,00 de dia, R$ 20,00 de noite), congelada no início da corrida.
-- A bandeirada inclui **1,5 km rodados** e **5 minutos de espera**, em qualquer
-  momento da corrida. O que passar de cada um é cobrado.
-- Cada trecho é cobrado por distância **ou** por tempo, o que der mais, como
-  taxímetro de verdade. Andar muito devagar conta como espera.
-- A regra fica isolada em `lib/core/tarifador.dart`, com testes em `test/`.
+**Versão 3.0 — Flutter (29/09/2026).** A versão antiga (Capacitor, 2.4)
+está guardada na etiqueta `capacitor-2.4-final`.
 
-## Licença
-- Chave curta conferida no servidor de licenças. O servidor devolve uma
-  liberação assinada (ECDSA P-256), conferida no app com a chave pública.
-- O código do aparelho é o mesmo da versão antiga (ANDROID_ID, mesma conta):
-  a chave que o cliente já tem continua valendo.
-- O app renova sozinho 5 dias antes de vencer e percebe relógio atrasado.
+## Regra de cobrança
+- A bandeirada (dia R$ 10,00 · noite R$ 20,00) inclui **1,5 km rodados**
+  e **5 minutos de espera**, em qualquer momento da corrida.
+- Cada trecho é cobrado por **distância OU tempo, o que der mais**, como
+  taxímetro de verdade (devagar vale o minuto, andando vale o km).
+- A bandeirada fica congelada no início da corrida.
+- A regra fica em `lib/core/tarifador.dart`, com testes em `test/`.
 
-## APK
-- Sai sozinho a cada atualização do ramo `main`: análise, testes, assinatura
-  e publicação em **Releases → apk-mais-recente**.
-- Assinado com a **mesma chave** da versão antiga (segredos
-  `TAXIMETRO_KEYSTORE_BASE64` e `TAXIMETRO_KEYSTORE_SENHA`): instala por cima.
+## Como sai o APK
+A cada envio para `main`, a esteira (GitHub Actions) faz análise do código,
+roda os testes da cobrança e gera o APK assinado com a **mesma chave da
+versão anterior**. Por isso ele atualiza por cima e a licença do aparelho
+continua valendo. O link fixo de download é o release `apk-mais-recente`.

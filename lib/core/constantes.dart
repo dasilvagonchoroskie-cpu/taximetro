@@ -51,7 +51,7 @@ class ConfigPadrao {
   static const double kmIncluidoNaBandeirada = 1.5;
   static const double minutosIncluidoNaBandeirada = 5;
   static const String navegador = 'waze';
-  static const double taxaKm = 3.00; // tarifa do Fabiano (13/09/2026)
+  static const double taxaKm = 2.80;
   static const double taxaEspera = 0.55;
   static const double limiarVelocidadeKmh = 5;
 }

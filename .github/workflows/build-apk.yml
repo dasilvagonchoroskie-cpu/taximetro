@@ -1,33 +1,38 @@
-# Taximetro em Flutter: analisa, roda os testes da cobranca e da licenca,
-# assina com a MESMA chave do taximetro original (instala por cima do app
-# que o cliente ja tem) e publica o APK em Releases.
-name: Montar APK do Taximetro
+name: Compilar APK do Taximetro
 
+# Taximetro em Flutter (versao 3). A cada envio: analise do codigo, testes
+# da regra de cobranca e APK assinado com a MESMA chave da versao antiga.
+# Assim o Android atualiza por cima e a licenca do aparelho continua valendo
+# (o codigo do aparelho vem do ANDROID_ID, que depende da chave).
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: write
+  workflow_dispatch: {}
 
 env:
   FLUTTER_VERSION: '3.47.5'
   JAVA_VERSION: '17'
+  # Impressao digital da chave do taximetro (a do app que ja esta na rua).
+  CHAVE_ESPERADA: '8bf1414aed3f5f49'
 
 jobs:
   apk:
-    name: Analisar, testar e montar
+    name: Validar, testar e compilar
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Preparar Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - uses: subosito/flutter-action@v2
+      - name: Preparar Flutter
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -39,43 +44,51 @@ jobs:
       - name: Analise estatica (flutter analyze)
         run: flutter analyze
 
-      # Cobranca (franquia, o que der mais) e licenca (assinatura e codigo
-      # do aparelho). Se alguem quebrar uma delas, o APK nem e gerado.
-      - name: Testes automaticos (flutter test)
+      - name: Testes da regra de cobranca (flutter test)
         run: flutter test
 
-      - name: Chave de assinatura original do taximetro
+      - name: Preparar a chave de assinatura (a mesma da versao antiga)
         env:
           CHAVE: ${{ secrets.TAXIMETRO_KEYSTORE_BASE64 }}
           SENHA: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
         run: |
           if [ -z "$CHAVE" ] || [ -z "$SENHA" ]; then
-            echo "::error::Faltam os segredos TAXIMETRO_KEYSTORE_BASE64 / TAXIMETRO_KEYSTORE_SENHA."
-            exit 1
+            echo "ERRO: faltam os segredos da chave do taximetro"; exit 1
           fi
-          echo "$CHAVE" | base64 -di > "$RUNNER_TEMP/taximetro.jks"
-          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=taximetro\nkeyPassword=%s\n' \
-            "$RUNNER_TEMP/taximetro.jks" "$SENHA" "$SENHA" > android/key.properties
+          echo "$CHAVE" | base64 -d > "$RUNNER_TEMP/taximetro.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/taximetro.jks" "$SENHA" "taximetro" "$SENHA" > android/key.properties
 
-      # Numero da versao sempre acima do app antigo (versionCode 6).
-      - name: Montar o APK
+      - name: Compilar APK de release assinado
         run: |
           NUMERO=$((1000 + ${{ github.run_number }}))
-          flutter build apk --release --build-name=3.0.0 --build-number=$NUMERO
-          cp build/app/outputs/flutter-apk/app-release.apk "taximetro-$NUMERO.apk"
-          echo "APK=taximetro-$NUMERO.apk" >> "$GITHUB_ENV"
+          flutter build apk --release --build-number=$NUMERO
+          mkdir -p saida
+          cp build/app/outputs/flutter-apk/app-release.apk saida/taximetro.apk
+          echo "$(grep '^version:' pubspec.yaml) | codigo de versao: $NUMERO"
 
-      - name: Guardar como artefato
+      - name: Conferir que a chave e a do taximetro (senao nao publica)
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs saida/taximetro.apk | tee assinatura.txt
+          if ! grep -qi "SHA-256 digest: $CHAVE_ESPERADA" assinatura.txt; then
+            echo "ERRO: o APK nao saiu com a chave do taximetro. Nao publico."; exit 1
+          fi
+          echo "Chave conferida: e a mesma do app que esta na rua."
+
+      - name: Publicar o APK pronto (artefato)
         uses: actions/upload-artifact@v4
         with:
           name: taximetro-apk
-          path: ${{ env.APK }}
+          path: saida/taximetro.apk
 
-      - name: Publicar o APK como Release (link direto, sem login)
+      - name: Publicar como Release (link direto, sem precisar de login)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-mais-recente
           name: Taximetro - versao mais recente
-          body: APK gerado automaticamente a cada atualizacao, assinado com a chave original do taximetro (instala por cima). Baixe o arquivo .apk abaixo.
-          files: ${{ env.APK }}
+          body: Taximetro em Flutter (versao 3). Assinado com a mesma chave da versao anterior, instala por cima e a licenca continua valendo.
+          files: saida/taximetro.apk
           prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
