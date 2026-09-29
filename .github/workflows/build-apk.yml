@@ -1,93 +1,81 @@
-name: Compilar APK do Taxímetro
+# Taximetro em Flutter: analisa, roda os testes da cobranca e da licenca,
+# assina com a MESMA chave do taximetro original (instala por cima do app
+# que o cliente ja tem) e publica o APK em Releases.
+name: Montar APK do Taximetro
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch: {}
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  JAVA_VERSION: '17'
 
 jobs:
-  build:
+  apk:
+    name: Analisar, testar e montar
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Baixar o código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Preparar Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Preparar Android SDK
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Baixar dependencias
+        run: flutter pub get
+
+      - name: Analise estatica (flutter analyze)
+        run: flutter analyze
+
+      # Cobranca (franquia, o que der mais) e licenca (assinatura e codigo
+      # do aparelho). Se alguem quebrar uma delas, o APK nem e gerado.
+      - name: Testes automaticos (flutter test)
+        run: flutter test
+
+      - name: Chave de assinatura original do taximetro
+        env:
+          CHAVE: ${{ secrets.TAXIMETRO_KEYSTORE_BASE64 }}
+          SENHA: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
         run: |
-          # A acao android-actions/setup-android passou a falhar. A maquina
-          # do GitHub ja vem com o SDK do Android instalado, entao basta
-          # apontar para ele e aceitar as licencas.
-          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
-            echo "ERRO: SDK do Android nao encontrado na maquina."
+          if [ -z "$CHAVE" ] || [ -z "$SENHA" ]; then
+            echo "::error::Faltam os segredos TAXIMETRO_KEYSTORE_BASE64 / TAXIMETRO_KEYSTORE_SENHA."
             exit 1
           fi
-          echo "SDK em: $SDK"
-          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          echo "licencas aceitas"
+          echo "$CHAVE" | base64 -di > "$RUNNER_TEMP/taximetro.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=taximetro\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/taximetro.jks" "$SENHA" "$SENHA" > android/key.properties
 
-
-      - name: Preparar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Instalar dependências
-        run: npm install
-
-      - name: Carimbar a versao dentro do aplicativo
+      # Numero da versao sempre acima do app antigo (versionCode 6).
+      - name: Montar o APK
         run: |
-          VERSAO=$(grep -m1 'versionName' android/app/build.gradle | sed 's/.*"\(.*\)".*/\1/')
-          if [ -z "$VERSAO" ]; then echo "ERRO: nao achei o versionName"; exit 1; fi
-          echo "versao: $VERSAO"
-          sed -i "s/VERSAO_NA_MONTAGEM/$VERSAO/" www/index.html
-          grep -c "const VERSAO_APP = '$VERSAO'" www/index.html
+          NUMERO=$((1000 + ${{ github.run_number }}))
+          flutter build apk --release --build-name=3.0.0 --build-number=$NUMERO
+          cp build/app/outputs/flutter-apk/app-release.apk "taximetro-$NUMERO.apk"
+          echo "APK=taximetro-$NUMERO.apk" >> "$GITHUB_ENV"
 
-      - name: Sincronizar projeto Android (Capacitor)
-        run: npx cap sync android
-
-      - name: Permitir execução do Gradle
-        run: chmod +x android/gradlew
-
-      - name: Compilar APK de release (ainda sem assinatura)
-        working-directory: android
-        run: ./gradlew assembleRelease
-
-      - name: Assinar digitalmente o APK
-        id: assinar_apk
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.TAXIMETRO_KEYSTORE_BASE64 }}
-          alias: taximetro
-          keyStorePassword: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
-          keyPassword: ${{ secrets.TAXIMETRO_KEYSTORE_SENHA }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Publicar o APK pronto (como artefato do build)
+      - name: Guardar como artefato
         uses: actions/upload-artifact@v4
         with:
           name: taximetro-apk
-          path: ${{ steps.assinar_apk.outputs.signedReleaseFile }}
+          path: ${{ env.APK }}
 
-      - name: Publicar o APK como Release (link direto, sem precisar de login)
+      - name: Publicar o APK como Release (link direto, sem login)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-mais-recente
-          name: Taxímetro — versão mais recente
-          body: APK gerado automaticamente a cada atualização, assinado digitalmente. Baixe o arquivo .apk abaixo.
-          files: ${{ steps.assinar_apk.outputs.signedReleaseFile }}
+          name: Taximetro - versao mais recente
+          body: APK gerado automaticamente a cada atualizacao, assinado com a chave original do taximetro (instala por cima). Baixe o arquivo .apk abaixo.
+          files: ${{ env.APK }}
           prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,14 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.idea/
+*.iml
+# Android
+android/.gradle/
+android/local.properties
+# Segredos: NUNCA versionar a chave de assinatura
+android/key.properties
+*.jks
+*.keystore
