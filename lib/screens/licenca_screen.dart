@@ -31,6 +31,22 @@ class _LicencaScreenState extends State<LicencaScreen> {
     super.dispose();
   }
 
+  /// Chave curta completa (16 letras) ou chave comprida do gerador de
+  /// reserva (80+ caracteres). Antes so a curta acendia o botao.
+  bool get _chaveCompleta {
+    final limpa = _chave.text.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+    return limpa.replaceAll('-', '').length == 16 || limpa.length >= 80;
+  }
+
+  Future<void> _colarChave() async {
+    final dados = await Clipboard.getData(Clipboard.kTextPlain);
+    final texto = dados?.text?.trim() ?? '';
+    if (texto.isEmpty) return;
+    final m = Licenca.formatarChaveDigitada(texto);
+    _chave.value = TextEditingValue(text: m, selection: TextSelection.collapsed(offset: m.length));
+    setState(() {});
+  }
+
   Future<void> _ativar() async {
     setState(() => _ativando = true);
     await context.read<TaximetroState>().ativarLicenca(_chave.text);
@@ -103,9 +119,8 @@ class _LicencaScreenState extends State<LicencaScreen> {
                       children: [
                         CampoApp(
                           label: 'Chave',
-                          hint: 'XXXX-XXXX-XXXX-XXXX',
+                          hint: 'XXXX-XXXX-XXXX-XXXX ou a chave comprida',
                           controller: _chave,
-                          maxLength: 19,
                           onChanged: (v) {
                             final m = Licenca.formatarChaveDigitada(v);
                             if (m != v) {
@@ -115,6 +130,16 @@ class _LicencaScreenState extends State<LicencaScreen> {
                           },
                           error: s.erroLicenca,
                         ),
+                        // Colar e o jeito certo de trazer a chave comprida
+                        // (86 caracteres) que chega pelo WhatsApp.
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: _colarChave,
+                            icon: const Icon(Icons.content_paste),
+                            label: const Text('Colar chave'),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -123,7 +148,7 @@ class _LicencaScreenState extends State<LicencaScreen> {
                     label: 'ATIVAR APARELHO',
                     icon: Icons.lock_open,
                     loading: _ativando,
-                    enabled: _chave.text.replaceAll('-', '').length == 16,
+                    enabled: _chaveCompleta,
                     onPressed: _ativar,
                   ),
                   const SizedBox(height: 16),
