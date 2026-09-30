@@ -1,0 +1,20 @@
+name: Verificar servidor de licencas
+
+# Confere se o servidor de licencas esta no ar e respondendo certo, sem
+# precisar de senha: tenta ativar uma chave que nao existe e espera a recusa
+# educada (404). Roda so quando alguem manda.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Perguntar ao servidor
+        run: |
+          RESP=$(curl -s -o corpo.txt -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"chave":"AAAA-BBBB-CCCC-DDDD","app_id":"taximetro","aparelho":"YJPJ-P7EA-DG7B-5BEJ"}' \
+            https://fortaleza-licencas.fortalezadigitalsecurity.workers.dev/ativar || echo 000)
+          echo "::notice title=Servidor de licencas::HTTP $RESP - $(head -c 200 corpo.txt)"
+          if [ "$RESP" != "404" ]; then echo "::error::o servidor nao respondeu como esperado"; exit 1; fi
