@@ -14,21 +14,62 @@ class LicencaScreen extends StatefulWidget {
   State<LicencaScreen> createState() => _LicencaScreenState();
 }
 
-class _LicencaScreenState extends State<LicencaScreen> {
+class _LicencaScreenState extends State<LicencaScreen> with WidgetsBindingObserver {
   final _chave = TextEditingController();
+  bool _ativando = false;
 
   @override
   void initState() {
     super.initState();
     // Licenca vencida: a chave ja vem preenchida, e so tocar em Ativar.
     _chave.text = context.read<TaximetroState>().chaveGuardada ?? '';
+    WidgetsBinding.instance.addObserver(this);
+    // 3.1.1: abriu o app com a mensagem do WhatsApp copiada? A chave entra
+    // sozinha, sem digitar nada.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _procurarChaveCopiada());
   }
-  bool _ativando = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // O Android so deixa ler o que foi copiado com a janela ja em foco.
+      Future.delayed(const Duration(milliseconds: 400), _procurarChaveCopiada);
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _chave.dispose();
     super.dispose();
+  }
+
+  /// A chave que estiver no que foi copiado (a mensagem inteira serve).
+  Future<String?> _chaveCopiada() async {
+    try {
+      final dados = await Clipboard.getData(Clipboard.kTextPlain);
+      final texto = dados?.text ?? '';
+      if (texto.trim().isEmpty || !mounted) return null;
+      return Licenca.extrairChave(texto, ignorar: context.read<TaximetroState>().codigoAparelho);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _preencher(String chave) {
+    _chave.value = TextEditingValue(text: chave, selection: TextSelection.collapsed(offset: chave.length));
+    setState(() {});
+  }
+
+  /// So preenche sozinho com o campo vazio: nunca troca o que o cliente digitou.
+  Future<void> _procurarChaveCopiada() async {
+    if (!mounted || _ativando || _chave.text.trim().isNotEmpty) return;
+    final chave = await _chaveCopiada();
+    if (chave == null || !mounted || _chave.text.trim().isNotEmpty) return;
+    _preencher(chave);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Chave encontrada no que você copiou. Toque em ATIVAR APARELHO.')),
+    );
   }
 
   /// Chave curta completa (16 letras) ou chave comprida do gerador de
@@ -39,12 +80,18 @@ class _LicencaScreenState extends State<LicencaScreen> {
   }
 
   Future<void> _colarChave() async {
-    final dados = await Clipboard.getData(Clipboard.kTextPlain);
-    final texto = dados?.text?.trim() ?? '';
-    if (texto.isEmpty) return;
-    final m = Licenca.formatarChaveDigitada(texto);
-    _chave.value = TextEditingValue(text: m, selection: TextSelection.collapsed(offset: m.length));
-    setState(() {});
+    final chave = await _chaveCopiada();
+    if (!mounted) return;
+    if (chave == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não achei a chave no que está copiado. No WhatsApp, segure o dedo na mensagem '
+              'com a chave, toque em Copiar e volte aqui.'),
+        ),
+      );
+      return;
+    }
+    _preencher(chave);
   }
 
   Future<void> _ativar() async {
@@ -122,7 +169,9 @@ class _LicencaScreenState extends State<LicencaScreen> {
                           hint: 'XXXX-XXXX-XXXX-XXXX ou a chave comprida',
                           controller: _chave,
                           onChanged: (v) {
-                            final m = Licenca.formatarChaveDigitada(v);
+                            // Colou a mensagem inteira direto no campo: fica so a chave.
+                            final achada = v.length > 19 ? Licenca.extrairChave(v, ignorar: s.codigoAparelho) : null;
+                            final m = achada ?? Licenca.formatarChaveDigitada(v);
                             if (m != v) {
                               _chave.value = TextEditingValue(text: m, selection: TextSelection.collapsed(offset: m.length));
                             }
@@ -130,8 +179,8 @@ class _LicencaScreenState extends State<LicencaScreen> {
                           },
                           error: s.erroLicenca,
                         ),
-                        // Colar e o jeito certo de trazer a chave comprida
-                        // (86 caracteres) que chega pelo WhatsApp.
+                        // Colar serve para a mensagem inteira do WhatsApp:
+                        // o app acha a chave (curta ou comprida) no texto.
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
@@ -139,6 +188,11 @@ class _LicencaScreenState extends State<LicencaScreen> {
                             icon: const Icon(Icons.content_paste),
                             label: const Text('Colar chave'),
                           ),
+                        ),
+                        Text(
+                          'Recebeu pelo WhatsApp? Segure o dedo na mensagem, toque em Copiar e volte aqui: '
+                          'a chave entra sozinha.',
+                          style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.6)),
                         ),
                       ],
                     ),

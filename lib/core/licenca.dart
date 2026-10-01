@@ -48,6 +48,37 @@ class Licenca {
     return limpa.length == 16 ? _emGrupos(limpa) : null;
   }
 
+  /// Acha a chave dentro de qualquer texto copiado — a mensagem inteira do
+  /// WhatsApp, por exemplo (versao 3.1.1). Devolve a chave curta no formato
+  /// XXXX-XXXX-XXXX-XXXX, a comprida do gerador de reserva, ou null se nao
+  /// achar nenhuma. Ignora o codigo deste aparelho, que tem o mesmo formato
+  /// e pode estar copiado (botao "Copiar codigo").
+  static String? extrairChave(String texto, {String? ignorar}) {
+    final proprio = (ignorar ?? '').toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    bool doAlfabeto(String s) => s.split('').every(alfabeto.contains);
+
+    // 1) Chave curta com tracos, no meio do texto.
+    final curta = RegExp(
+      r'(?:^|[^A-Za-z0-9_-])([A-Za-z0-9]{4})-([A-Za-z0-9]{4})-([A-Za-z0-9]{4})-([A-Za-z0-9]{4})(?=$|[^A-Za-z0-9_-])',
+    );
+    for (final m in curta.allMatches(texto)) {
+      final limpa = '${m[1]}${m[2]}${m[3]}${m[4]}'.toUpperCase();
+      if (limpa == proprio || !doAlfabeto(limpa)) continue;
+      return _emGrupos(limpa);
+    }
+
+    // 2) Chave comprida do gerador de reserva (80+ caracteres seguidos).
+    final comprida = RegExp(r'[A-Za-z0-9_-]{80,}').firstMatch(texto);
+    if (comprida != null) return comprida[0];
+
+    // 3) So a chave, sem tracos ou com espacos (o texto inteiro e a chave).
+    final sozinha = texto.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (sozinha.length == 16 && sozinha != proprio && doAlfabeto(sozinha)) {
+      return _emGrupos(sozinha);
+    }
+    return null;
+  }
+
   /// Formata enquanto o cliente digita. Chave antiga (comprida) passa
   /// como esta, para continuar aceita.
   static String formatarChaveDigitada(String valor) {
