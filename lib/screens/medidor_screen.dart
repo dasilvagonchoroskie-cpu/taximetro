@@ -61,6 +61,24 @@ class MedidorScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ---- Corrida recuperada (o Android tinha fechado o app) ----
+              if (s.avisoCorridaRecuperada != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+                  decoration: BoxDecoration(
+                    color: t.colorScheme.primary.withValues(alpha: 0.12),
+                    border: Border.all(color: t.colorScheme.primary),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(s.avisoCorridaRecuperada!, style: const TextStyle(fontSize: 12))),
+                      TextButton(onPressed: s.dispensarAvisoCorridaRecuperada, child: const Text('OK')),
+                    ],
+                  ),
+                ),
+
               // ---- Aviso de GPS ----
               if (s.avisoGps != null)
                 Container(
@@ -302,8 +320,15 @@ class MedidorScreen extends StatelessWidget {
   }
 
   Future<void> _finalizar(BuildContext context, TaximetroState s) async {
-    final forma = await mostrarPagamento(context, s.estado.valorTotal);
-    if (forma == null) return;
+    // O valor PARA de contar no "Finalizar": o que aparece no pagamento e o
+    // que vai para o recibo.
+    final valor = await s.pararParaPagamento();
+    if (!context.mounted) return;
+    final forma = await mostrarPagamento(context, valor);
+    if (forma == null) {
+      await s.retomarAposPagamentoCancelado();
+      return;
+    }
 
     final registro = await s.finalizarCorrida(formaPagamento: forma);
     if (!context.mounted) return;

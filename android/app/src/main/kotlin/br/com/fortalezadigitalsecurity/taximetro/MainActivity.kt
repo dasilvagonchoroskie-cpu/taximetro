@@ -1,6 +1,7 @@
 package br.com.fortalezadigitalsecurity.taximetro
 
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -20,6 +21,23 @@ class MainActivity : FlutterActivity() {
                         null
                     }
                     resultado.success(id ?: "")
+                } else {
+                    resultado.notImplemented()
+                }
+            }
+        // Tela acesa durante a corrida: o motorista ve o valor sem tocar.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taximetro/tela")
+            .setMethodCallHandler { chamada, resultado ->
+                if (chamada.method == "manterAcesa") {
+                    val ligar = chamada.arguments as? Boolean ?: false
+                    runOnUiThread {
+                        if (ligar) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                    }
+                    resultado.success(null)
                 } else {
                     resultado.notImplemented()
                 }

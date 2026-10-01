@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constantes.dart';
 import '../core/licenca.dart';
+import '../core/medidor_corrida.dart';
 import '../core/tarifador.dart';
 import '../models/aparencia.dart';
 import '../models/config.dart';
@@ -42,22 +43,18 @@ class TaximetroState extends ChangeNotifier {
   EstadoCorrida estado = EstadoCorrida();
   bool corridaAtiva = false;
 
-  /// Bandeirada CONGELADA no inicio: a corrida que comeca as 21h50 segue
-  /// na bandeira do dia mesmo passando das 22h.
-  double _bandeiradaDaCorrida = 0;
+  /// A contagem da corrida (bandeirada congelada, distancia, espera e total).
+  /// Peca pura, testada com corridas simuladas.
+  late MedidorCorrida _medidor = MedidorCorrida(_tarifadorDaConfig());
 
-  /// Tempos com as fracoes de segundo. Antes o tempo era somado cortando
-  /// as fracoes: um intervalo de 0,98 s somava ZERO e o tempo parado andava
-  /// aos solavancos.
-  double _paradoExatoS = 0;
-  double _totalExatoS = 0;
-
-  /// Tempo do trecho rodado ainda aberto (portado do original).
-  double _bufferTempoS = 0;
-
-  /// Km cobrados de fato: so os trechos que valeram por distancia, no que
-  /// passou da franquia.
-  double _kmCobradoAcumulado = 0;
+  /// Corrida recuperada depois que o Android fechou o app.
+  String? avisoCorridaRecuperada;
+  double? _latAntesDeFechar;
+  double? _lngAntesDeFechar;
+  double _segundosSemMedir = 0;
+  int _ultimaGravacaoMs = 0;
+  bool _pausadaParaPagamento = false;
+  static const MethodChannel _canalTela = MethodChannel('taximetro/tela');
   bool licenciado = false;
   String? codigoAparelho;
   String? erroLicenca;
@@ -90,15 +87,14 @@ class TaximetroState extends ChangeNotifier {
   Timer? _relogioCorrida;
   StreamSubscription<Position>? _posicaoSub;
 
-  double _bufferDistanciaM = 0;
 
   /// Ancora: ponto de referencia do trecho acumulado.
   Position? _ancora;
 
   bool get emHorarioNoturno => config.emHorarioNoturno;
-  double get bandeiradaAtual => corridaAtiva ? _bandeiradaDaCorrida : config.bandeiradaAtual;
+  double get bandeiradaAtual => corridaAtiva ? _medidor.bandeirada : config.bandeiradaAtual;
 
-  Tarifador get _tarifador => Tarifador(
+  Tarifador _tarifadorDaConfig() => Tarifador(
         taxaKm: config.taxaKm,
         taxaEsperaPorMinuto: config.taxaEspera,
         kmIncluido: config.kmIncluidoNaBandeirada,
@@ -106,59 +102,209 @@ class TaximetroState extends ChangeNotifier {
       );
 
   /// Km cobrados de fato (trechos que valeram por distancia).
-  double get kmCobrados => _kmCobradoAcumulado;
+  double get kmCobrados => _medidor.kmCobrado;
 
   double get kmFranquiaRestante =>
-      math.max(0.0, config.kmIncluidoNaBandeirada - estado.distanciaTotalKm);
+      corridaAtiva ? _medidor.kmFranquiaRestante : config.kmIncluidoNaBandeirada;
 
   double get minutosFranquiaRestantes =>
-      math.max(0.0, config.minutosIncluidoNaBandeirada - _paradoExatoS / 60);
+      corridaAtiva ? _medidor.minutosFranquiaRestantes : config.minutosIncluidoNaBandeirada;
 
-  /// Refaz a conta a partir dos TOTAIS de distancia e tempo parado.
+  /// Copia os totais do medidor para a tela. O TOTAL ja inclui a bandeirada.
   void _recalcular() {
-    final t = _tarifador;
-    estado.kmIncluidoUsado = t.kmFranquiaUsada(estado.distanciaTotalKm);
-    estado.minutosIncluidoUsado = t.minutosFranquiaUsados(_paradoExatoS);
-    estado.esperaInicialS = math.min(_paradoExatoS, t.minutosIncluido * 60);
-    estado.valorEspera = t.valorEspera(_paradoExatoS);
-    estado.valorTotal = _kmCobradoAcumulado * t.taxaKm + estado.valorEspera;
-    estado.tempoParadoS = _paradoExatoS.floor();
-    estado.tempoTotalS = _totalExatoS.floor();
+    estado.distanciaTotalKm = _medidor.distanciaKm;
+    estado.jaAndou = _medidor.jaAndou;
+    estado.kmIncluidoUsado = _medidor.kmFranquiaUsada;
+    estado.minutosIncluidoUsado = _medidor.minutosFranquiaUsados;
+    estado.esperaInicialS = math.min(_medidor.paradoS, _medidor.tarifador.minutosIncluido * 60);
+    estado.valorEspera = _medidor.valorEspera;
+    estado.valorTotal = _medidor.total;
+    estado.tempoParadoS = _medidor.paradoS.floor();
+    estado.tempoTotalS = _medidor.totalS.floor();
+    _gravarCorridaEmAndamento();
   }
 
-  void _zerarContagem() {
-    _paradoExatoS = 0;
-    _totalExatoS = 0;
-    _bufferTempoS = 0;
-    _kmCobradoAcumulado = 0;
-  }
-
-  /// Fecha um trecho rodado (portado do original): a distancia sempre
-  /// entra no odometro, e o trecho e cobrado por distancia OU por tempo —
-  /// o que der mais, nunca os dois.
-  void _fecharTrechoRodado() {
-    if (_bufferDistanciaM <= 0 && _bufferTempoS <= 0) {
-      _recalcular();
-      return;
-    }
-    final t = _tarifador;
-    final km = _bufferDistanciaM / 1000;
-    final antes = estado.distanciaTotalKm;
-    estado.distanciaTotalKm += km;
-    if (!estado.jaAndou && estado.distanciaTotalKm * 1000 >= Constantes.distanciaSaiuDoLugarM) {
-      estado.jaAndou = true;
-    }
-    if (t.trechoPorTempo(km, _bufferTempoS)) {
-      // Tao devagar que o minuto rende mais que o km: o trecho vira espera
-      // (e conta na franquia de 5 minutos).
-      _paradoExatoS += _bufferTempoS;
-    } else {
-      _kmCobradoAcumulado += t.kmCobravelDoTrecho(antes, estado.distanciaTotalKm);
-    }
-    _bufferDistanciaM = 0;
-    _bufferTempoS = 0;
+  /// Parte pura do comeco da corrida (sem GPS e sem Android).
+  void _comecarContagem() {
+    estado.reiniciar();
+    _medidor = MedidorCorrida(_tarifadorDaConfig())..comecar(config.bandeiradaAtual);
+    _ultimoInstanteMs = null;
+    _ancora = null;
+    avisoCorridaRecuperada = null;
+    _latAntesDeFechar = null;
+    _pausadaParaPagamento = false;
+    corridaAtiva = true;
+    _ultimaGravacaoMs = 0;
     _recalcular();
   }
+
+  /// Grava a corrida em andamento (no maximo a cada 3 s). Se o Android
+  /// fechar o app, ela volta de onde parou.
+  void _gravarCorridaEmAndamento({bool agora = false}) {
+    if (!corridaAtiva) return;
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    if (!agora && ms - _ultimaGravacaoMs < 3000) return;
+    _ultimaGravacaoMs = ms;
+    final ancora = _ancora;
+    final dados = <String, dynamic>{
+      'versao': 1,
+      'salvoEmMs': ms,
+      'medidor': _medidor.paraJson(),
+      'origem': trajetoOrigem,
+      'destino': trajetoDestino,
+      if (ancora != null) 'lat': ancora.latitude,
+      if (ancora != null) 'lng': ancora.longitude,
+    };
+    SharedPreferences.getInstance()
+        .then((p) => p.setString(Constantes.chaveCorridaEmAndamento, jsonEncode(dados)))
+        .catchError((Object _) => false);
+  }
+
+  Future<void> _apagarCorridaEmAndamento() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(Constantes.chaveCorridaEmAndamento);
+    } catch (_) {
+      // Sem armazenamento: nada para apagar.
+    }
+  }
+
+  /// Se o Android fechou o app no meio da corrida, ela volta de onde parou.
+  Future<void> _recuperarCorridaEmAndamento(SharedPreferences prefs) async {
+    final bruto = prefs.getString(Constantes.chaveCorridaEmAndamento);
+    if (bruto == null || bruto.isEmpty) return;
+    try {
+      final dados = jsonDecode(bruto) as Map<String, dynamic>;
+      final salvoEmMs = (dados['salvoEmMs'] as num).toInt();
+      final semMedirS = (DateTime.now().millisecondsSinceEpoch - salvoEmMs) / 1000;
+      final medidor = MedidorCorrida.deJson(dados['medidor'] as Map<String, dynamic>);
+      if (medidor == null || semMedirS < 0 || semMedirS > 12 * 3600) {
+        await prefs.remove(Constantes.chaveCorridaEmAndamento);
+        return;
+      }
+      _medidor = medidor;
+      trajetoOrigem = (dados['origem'] as String?) ?? '';
+      trajetoDestino = (dados['destino'] as String?) ?? '';
+      _latAntesDeFechar = (dados['lat'] as num?)?.toDouble();
+      _lngAntesDeFechar = (dados['lng'] as num?)?.toDouble();
+      _segundosSemMedir = semMedirS;
+      if (_latAntesDeFechar == null || _lngAntesDeFechar == null) {
+        _medidor.soTempo(semMedirS);
+        _latAntesDeFechar = null;
+      }
+      estado.reiniciar();
+      _ancora = null;
+      _ultimoInstanteMs = null;
+      corridaAtiva = true;
+      avisoCorridaRecuperada = 'Corrida recuperada: o aplicativo ficou fechado por '
+          '${(semMedirS / 60).ceil()} min. A distancia desse tempo entra em linha reta '
+          'e o tempo dele nao e cobrado como espera.';
+      statusTexto = 'Corrida recuperada - aguardando GPS';
+      statusClasse = 'ativo';
+      _recalcular();
+      ligarRelogioDaCorrida();
+      unawaited(_manterTelaAcesa(true));
+      await _iniciarRastreamento();
+    } catch (_) {
+      await prefs.remove(Constantes.chaveCorridaEmAndamento);
+    }
+  }
+
+  /// O primeiro GPS bom depois de recuperar mede, em linha reta, quanto o
+  /// carro andou enquanto o app estava fechado.
+  void _recuperarDistanciaDoTempoFechado(Position pos) {
+    final lat = _latAntesDeFechar;
+    final lng = _lngAntesDeFechar;
+    _latAntesDeFechar = null;
+    if (lat == null || lng == null || _segundosSemMedir <= 0) return;
+    final metros = _haversineMetros(lat, lng, pos.latitude, pos.longitude);
+    if (metros / _segundosSemMedir <= Constantes.velocidadeImpossivelMs) {
+      _medidor.distanciaRecuperada(metros, _segundosSemMedir);
+    } else {
+      _medidor.soTempo(_segundosSemMedir);
+    }
+    _segundosSemMedir = 0;
+    _recalcular();
+  }
+
+  void dispensarAvisoCorridaRecuperada() {
+    avisoCorridaRecuperada = null;
+    notifyListeners();
+  }
+
+  /// Tela acesa durante a corrida: o motorista ve o valor sem tocar.
+  Future<void> _manterTelaAcesa(bool ligar) async {
+    try {
+      await _canalTela.invokeMethod<void>('manterAcesa', ligar);
+    } catch (_) {
+      // Sem a ponte com o Android (ex.: testes): segue sem tela acesa.
+    }
+  }
+
+  /// "Finalizar": o taximetro PARA de contar e devolve o valor final. O que
+  /// aparece no pagamento e o que vai para o recibo (antes a espera seguia
+  /// contando enquanto o passageiro pagava).
+  Future<double> pararParaPagamento() async {
+    if (!corridaAtiva) return estado.valorTotal;
+    _pausadaParaPagamento = true;
+    desligarRelogioDaCorrida();
+    await _pararRastreamento();
+    _medidor.fecharTrecho();
+    _recalcular();
+    _gravarCorridaEmAndamento(agora: true);
+    statusTexto = 'Corrida parada - aguardando pagamento';
+    statusClasse = 'espera';
+    notifyListeners();
+    return _medidor.total;
+  }
+
+  /// Desistiu do pagamento: volta a contar de onde parou. O tempo na tela
+  /// de pagamento nao e cobrado.
+  Future<void> retomarAposPagamentoCancelado() async {
+    if (!corridaAtiva || !_pausadaParaPagamento) return;
+    _pausadaParaPagamento = false;
+    _ultimoInstanteMs = null;
+    _ancora = null;
+    statusTexto = 'Corrida em andamento';
+    statusClasse = 'ativo';
+    ligarRelogioDaCorrida();
+    await _iniciarRastreamento();
+    notifyListeners();
+  }
+
+  /// O registro da corrida, com os mesmos valores da tela:
+  /// valor = bandeirada + distancia + espera.
+  RegistroCorrida _montarRegistro(String formaPagamento) {
+    _medidor.fecharTrecho();
+    _recalcular();
+    return RegistroCorrida(
+      data: DateTime.now(),
+      valor: _medidor.total,
+      distanciaKm: _medidor.distanciaKm,
+      tempoS: estado.tempoTotalS,
+      bandeirada: _medidor.bandeirada,
+      valorDistancia: _medidor.valorDistancia,
+      valorEspera: _medidor.valorEspera,
+      tempoParadoS: estado.tempoParadoS,
+      esperaInicialS: estado.esperaInicialS,
+      kmIncluidoUsado: estado.kmIncluidoUsado,
+      minutosIncluidoUsado: estado.minutosIncluidoUsado,
+      trajeto: [trajetoOrigem, trajetoDestino].where((p) => p.trim().isNotEmpty).join(' -> '),
+      formaPagamento: formaPagamento,
+    );
+  }
+
+  @visibleForTesting
+  void comecarContagemParaTeste() => _comecarContagem();
+
+  @visibleForTesting
+  MedidorCorrida get medidorParaTeste => _medidor;
+
+  @visibleForTesting
+  void recalcularParaTeste() => _recalcular();
+
+  @visibleForTesting
+  RegistroCorrida montarRegistroParaTeste() => _montarRegistro('');
 
   // ==================================================================
   // Ciclo de vida
@@ -197,6 +343,7 @@ class TaximetroState extends ChangeNotifier {
 
     await _carregarCodigoAparelho();
     await _conferirLicencaNaAbertura(prefs);
+    if (licenciado) await _recuperarCorridaEmAndamento(prefs);
     pronto = true;
     notifyListeners();
   }
@@ -398,21 +545,14 @@ class TaximetroState extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-
-    estado.reiniciar();
-    _zerarContagem();
-    _bufferDistanciaM = 0;
-    _ultimoInstanteMs = null;
-    _ancora = null;
-    _bandeiradaDaCorrida = config.bandeiradaAtual;
-    _zerarContagem();
-    corridaAtiva = true;
+    _comecarContagem();
     velocidadeAtualKmh = null;
     avisoGps = null;
     statusTexto = 'Corrida iniciada - aguardando GPS';
     statusClasse = 'ativo';
-
+    _gravarCorridaEmAndamento(agora: true);
     ligarRelogioDaCorrida();
+    unawaited(_manterTelaAcesa(true));
     await _iniciarRastreamento();
     notifyListeners();
     return true;
@@ -420,10 +560,14 @@ class TaximetroState extends ChangeNotifier {
 
   Future<void> cancelarCorrida() async {
     corridaAtiva = false;
+    _pausadaParaPagamento = false;
     desligarRelogioDaCorrida();
     await _pararRastreamento();
+    unawaited(_manterTelaAcesa(false));
+    await _apagarCorridaEmAndamento();
     estado.reiniciar();
-    _zerarContagem();
+    _medidor = MedidorCorrida(_tarifadorDaConfig());
+    avisoCorridaRecuperada = null;
     velocidadeAtualKmh = null;
     statusTexto = 'Corrida cancelada';
     statusClasse = 'aguardando';
@@ -431,53 +575,38 @@ class TaximetroState extends ChangeNotifier {
   }
 
   Future<void> reiniciarCorrida() async {
-    estado.reiniciar();
-    _zerarContagem();
-    _bufferDistanciaM = 0;
-    _ultimoInstanteMs = null;
-    _ancora = null;
+    if (corridaAtiva) {
+      _comecarContagem();
+      _gravarCorridaEmAndamento(agora: true);
+    } else {
+      estado.reiniciar();
+      _medidor = MedidorCorrida(_tarifadorDaConfig());
+    }
     velocidadeAtualKmh = null;
     statusTexto = corridaAtiva ? 'Corrida reiniciada' : 'Pronto para iniciar';
     statusClasse = corridaAtiva ? 'ativo' : 'aguardando';
     notifyListeners();
   }
 
-  /// Finaliza a corrida e grava no historico. Devolve o registro criado.
   Future<RegistroCorrida> finalizarCorrida({String formaPagamento = ''}) async {
-    // Fecha o ultimo pedaco rodado antes de gravar (como no original).
-    _fecharTrechoRodado();
-    final registro = RegistroCorrida(
-      data: DateTime.now(),
-      valor: estado.valorTotal,
-      distanciaKm: estado.distanciaTotalKm,
-      tempoS: estado.tempoTotalS,
-      bandeirada: bandeiradaAtual,
-      valorDistancia: _kmCobradoAcumulado * config.taxaKm,
-      valorEspera: estado.valorEspera,
-      tempoParadoS: estado.tempoParadoS,
-      esperaInicialS: estado.esperaInicialS,
-      kmIncluidoUsado: estado.kmIncluidoUsado,
-      minutosIncluidoUsado: estado.minutosIncluidoUsado,
-      trajeto: [trajetoOrigem, trajetoDestino].where((p) => p.trim().isNotEmpty).join(' -> '),
-      formaPagamento: formaPagamento,
-    );
-
+    final registro = _montarRegistro(formaPagamento);
     corridaAtiva = false;
+    _pausadaParaPagamento = false;
     desligarRelogioDaCorrida();
     await _pararRastreamento();
-
+    unawaited(_manterTelaAcesa(false));
+    await _apagarCorridaEmAndamento();
     historico = [registro, ...historico];
     await _gravarHistorico();
-
     estado.reiniciar();
-    _zerarContagem();
+    _medidor = MedidorCorrida(_tarifadorDaConfig());
     _ultimoInstanteMs = null;
     _ancora = null;
+    avisoCorridaRecuperada = null;
     velocidadeAtualKmh = null;
     statusTexto = 'Corrida finalizada';
     statusClasse = 'aguardando';
     notifyListeners();
-
     return registro;
   }
 
@@ -543,105 +672,82 @@ class TaximetroState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Processa uma nova posicao: aplica todos os filtros do original.
   void _medirPosicao(Position pos) {
     velocidadeAtualKmh = pos.speed >= 0 ? pos.speed * 3.6 : null;
     ultimaPosicao = pos;
-
-    if (!corridaAtiva) {
+    if (!corridaAtiva || _pausadaParaPagamento) {
       notifyListeners();
       return;
     }
-
-    // Leitura com margem de erro ruim nao mede distancia.
     if (pos.accuracy > Constantes.precisaoMaximaM) {
       _contarTempoApenas();
       notifyListeners();
       return;
     }
-
     final anterior = _ancora;
     if (anterior == null) {
       _ancora = pos;
       _ultimoInstanteMs = DateTime.now().millisecondsSinceEpoch;
+      _recuperarDistanciaDoTempoFechado(pos);
       statusTexto = 'Corrida em andamento';
       statusClasse = 'ativo';
       notifyListeners();
       return;
     }
-
     final metros = _haversineMetros(
       anterior.latitude,
       anterior.longitude,
       pos.latitude,
       pos.longitude,
     );
-
     final agoraMs = DateTime.now().millisecondsSinceEpoch;
     final segundos = _tempoDesdeAUltimaContagem(agoraMs);
-
-    // Velocidade impossivel: descarta o trecho.
     if (segundos != null && segundos > 0) {
       final velocidadeMs = metros / segundos;
       if (velocidadeMs > Constantes.velocidadeImpossivelMs) {
+        // Salto do GPS: descarta a distancia, mas o tempo passou de verdade.
         _ancora = pos;
-        // Descarta a distancia do salto, mas o tempo passou de verdade.
-        _totalExatoS += segundos;
+        _medidor.soTempo(segundos);
         _recalcular();
         notifyListeners();
         return;
       }
     }
-
     final velocidadeKmh = pos.speed >= 0 ? pos.speed * 3.6 : null;
     final parado = velocidadeKmh != null
         ? velocidadeKmh < Constantes.velocidadeParadoKmh
         : metros < Constantes.distanciaMinimaRuidoM;
-
     if (parado) {
       if (segundos != null) {
-        _totalExatoS += segundos;
-        // O tempo do trecho aberto tambem era espera (tremida do GPS parado).
-        cobrarComoParado(segundos + _bufferTempoS);
-        _bufferTempoS = 0;
+        _medidor.parou(segundos);
+      } else {
+        _medidor.descartarTremida();
       }
+      _recalcular();
       _ancora = pos;
-      _bufferDistanciaM = 0;
-        statusTexto = 'Parado - cobrando espera';
+      statusTexto = 'Parado - cobrando espera';
       statusClasse = 'espera';
       notifyListeners();
       return;
     }
-
-    // Acumula o trecho (distancia E tempo) ate dar distancia confiavel.
-    _bufferDistanciaM += metros;
-    if (segundos != null) {
-      _bufferTempoS += segundos;
-      _totalExatoS += segundos;
-    }
-
-    if (_bufferDistanciaM >= Constantes.distanciaMinimaRuidoM) {
-      _fecharTrechoRodado();
+    if (_medidor.andou(metros, segundos ?? 0)) {
       _ancora = pos;
       statusTexto = 'Corrida em andamento';
       statusClasse = 'ativo';
     } else {
-      // Ainda nao deu distancia confiavel: mantem a ancora anterior e nao
-      // joga o pedacinho fora (era o bug do original).
+      // Ainda nao deu distancia confiavel: mantem a ancora anterior.
       _ancora = anterior;
-      _recalcular();
     }
-
+    _recalcular();
     notifyListeners();
   }
 
-  /// Conta apenas o tempo (quando o GPS esta impreciso).
   void _contarTempoApenas() {
     final agoraMs = DateTime.now().millisecondsSinceEpoch;
     final segundos = _tempoDesdeAUltimaContagem(agoraMs);
     if (segundos == null) return;
-    _totalExatoS += segundos;
-    cobrarComoParado(segundos);
+    _medidor.semGps(segundos);
+    _recalcular();
   }
 
   /// Tempo desde a ultima contagem, com teto para buracos longos.
@@ -661,11 +767,8 @@ class TaximetroState extends ChangeNotifier {
   // ==================================================================
   // Cobranca
   // ==================================================================
-  /// Tempo parado: soma e refaz a conta. A espera so e cobrada no que
-  /// passar da franquia (5 min), esteja o carro parado no comeco ou no meio
-  /// da corrida. Antes, depois de andar 50 m, cobrava desde o 1o segundo.
   void cobrarComoParado(double segundosParado) {
-    _paradoExatoS += segundosParado;
+    _medidor.paradoS += segundosParado;
     _recalcular();
   }
 
@@ -677,22 +780,17 @@ class TaximetroState extends ChangeNotifier {
     _relogioCorrida = Timer.periodic(
       const Duration(milliseconds: Constantes.relogioCorridaMs),
       (_) {
-        if (!corridaAtiva) return;
+        if (!corridaAtiva || _pausadaParaPagamento) return;
         final agoraMs = DateTime.now().millisecondsSinceEpoch;
-
-        // Se o GPS acabou de contar, deixa com ele.
         if (_ultimoInstanteMs != null &&
             (agoraMs - _ultimoInstanteMs!) < Constantes.janelaGpsRecenteMs) {
           return;
         }
-
         final segundos = _tempoDesdeAUltimaContagem(agoraMs);
         if (segundos == null) return;
-
-        _totalExatoS += segundos;
-        cobrarComoParado(segundos + _bufferTempoS);
-        _bufferTempoS = 0;
-        _bufferDistanciaM = 0;
+        // Sem GPS recente: o tempo conta como espera (carro parado).
+        _medidor.parou(segundos);
+        _recalcular();
         notifyListeners();
       },
     );

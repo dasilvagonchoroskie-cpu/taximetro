@@ -38,6 +38,7 @@ class Constantes {
   static const String chaveHistorico = 'taxi.historico';
   static const String chaveAparencia = 'taxi.aparencia';
   static const String chaveLicenca = 'taxi.licenca';
+  static const String chaveCorridaEmAndamento = 'taxi.corrida_em_andamento';
 }
 
 /// Configuracao padrao (CONFIG_PADRAO do original).

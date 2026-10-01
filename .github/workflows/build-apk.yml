@@ -42,10 +42,20 @@ jobs:
         run: flutter pub get
 
       - name: Analise estatica (flutter analyze)
-        run: flutter analyze
+        run: |
+          set -o pipefail
+          if ! flutter analyze 2>&1 | tee analise.log; then
+            grep -E " error | warning | info |error -|warning -|info -" analise.log | head -40 | while IFS= read -r l; do echo "::error title=flutter analyze::$l"; done
+            exit 1
+          fi
 
       - name: Testes da regra de cobranca (flutter test)
-        run: flutter test
+        run: |
+          set -o pipefail
+          if ! flutter test 2>&1 | tee teste.log; then
+            grep -E "FAILED|\[E\]|Expected:|Actual:|Error:|error:|Exception|Which:" teste.log | head -40 | while IFS= read -r l; do echo "::error title=flutter test::$l"; done
+            exit 1
+          fi
 
       - name: Preparar a chave de assinatura (a mesma da versao antiga)
         env:
@@ -62,7 +72,11 @@ jobs:
       - name: Compilar APK de release assinado
         run: |
           NUMERO=$((1000 + ${{ github.run_number }}))
-          flutter build apk --release --build-number=$NUMERO
+          set -o pipefail
+          if ! flutter build apk --release --build-number=$NUMERO 2>&1 | tee build.log; then
+            grep -E "^e: |error:|What went wrong|FAILURE" -A2 build.log | head -40 | while IFS= read -r l; do echo "::error title=flutter build::$l"; done
+            exit 1
+          fi
           mkdir -p saida
           cp build/app/outputs/flutter-apk/app-release.apk saida/taximetro.apk
           echo "$(grep '^version:' pubspec.yaml) | codigo de versao: $NUMERO"
