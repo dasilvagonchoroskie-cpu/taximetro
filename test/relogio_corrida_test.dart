@@ -132,11 +132,13 @@ void main() {
       avancar(1000);
       s.medirPosicaoParaTeste(ponto(0));
     }
-    expect(s.estado.valorTotal, closeTo(10.0, 1e-9)); // 5 min dentro da franquia
+    // Bandeira 1 ou 2, conforme a hora em que o teste roda.
+    final bandeirada = s.medidorParaTeste.bandeirada;
+    expect(s.estado.valorTotal, closeTo(bandeirada, 1e-9)); // 5 min dentro da franquia
     avancar(1250); // sem leitura do GPS: so o relogio
     expect(s.estado.tempoParadoS, 301);
-    expect(s.estado.valorTotal, greaterThan(10.0));
+    expect(s.estado.valorTotal, greaterThan(bandeirada));
     s.medirPosicaoParaTeste(ponto(0));
-    expect(s.estado.valorTotal, closeTo(10 + 1.25 / 60 * s.config.taxaEspera, 1e-9));
+    expect(s.estado.valorTotal, closeTo(bandeirada + 1.25 / 60 * s.config.taxaEspera, 1e-9));
   });
 }
