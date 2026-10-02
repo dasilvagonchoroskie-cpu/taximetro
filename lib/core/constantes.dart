@@ -24,8 +24,9 @@ class Constantes {
   /// Teto de um unico buraco de contagem (meia hora), em segundos.
   static const int tetoDoBuracoS = 1800;
 
-  /// Intervalo do relogio da corrida (ms).
-  static const int relogioCorridaMs = 1000;
+  /// Intervalo do relogio da corrida (ms). 1/4 de segundo: os contadores da
+  /// tela viram o segundo na hora certa, sem "travar" (3.1.2).
+  static const int relogioCorridaMs = 250;
 
   /// Se o GPS contou ha menos que isto, deixa o tempo com ele (ms).
   static const int janelaGpsRecenteMs = 2500;

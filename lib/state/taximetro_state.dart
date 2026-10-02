@@ -83,7 +83,21 @@ class TaximetroState extends ChangeNotifier {
   bool pronto = false;
 
   // ---- Internos do calculo (identicos ao original) ----
+  /// Instante da ultima CONTAGEM de tempo (GPS ou relogio). Todo tempo que
+  /// passa entra na conta como (agora - _ultimoInstanteMs): nada se perde.
   int? _ultimoInstanteMs;
+
+  /// Instante da ultima leitura do GPS que contou tempo. O relogio so conta
+  /// sozinho quando o GPS fica mudo (3.1.2: antes ele olhava a ultima
+  /// contagem dele mesmo e contava de 3 em 3 segundos).
+  int? _ultimoGpsMs;
+
+  /// A ultima leitura foi de carro parado (ou sem GPS): o tempo que ainda
+  /// nao tem dono aparece na tela como espera.
+  bool _modoEspera = true;
+
+  /// Relogio de verdade; os testes trocam por um relogio de mentira.
+  int Function() _agoraMs = () => DateTime.now().millisecondsSinceEpoch;
   Timer? _relogioCorrida;
   StreamSubscription<Position>? _posicaoSub;
 
@@ -118,17 +132,70 @@ class TaximetroState extends ChangeNotifier {
     estado.minutosIncluidoUsado = _medidor.minutosFranquiaUsados;
     estado.esperaInicialS = math.min(_medidor.paradoS, _medidor.tarifador.minutosIncluido * 60);
     estado.valorEspera = _medidor.valorEspera;
-    estado.valorTotal = _medidor.total;
-    estado.tempoParadoS = _medidor.paradoS.floor();
-    estado.tempoTotalS = _medidor.totalS.floor();
+    _mostrarContadores();
     _gravarCorridaEmAndamento();
+  }
+
+  /// Tempo que ja passou e ainda nao foi contado (ate a proxima leitura).
+  double _pendenteS(int agoraMs) {
+    final ultimo = _ultimoInstanteMs;
+    if (ultimo == null || !corridaAtiva || _pausadaParaPagamento) return 0;
+    final s = (agoraMs - ultimo) / 1000;
+    if (s <= 0) return 0;
+    return s > Constantes.tetoDoBuracoS ? Constantes.tetoDoBuracoS.toDouble() : s;
+  }
+
+  /// Os contadores da TELA (tempo, espera e valor) andam com o relogio, sem
+  /// esperar o GPS (3.1.2). Antes eles so mudavam quando chegava leitura do
+  /// GPS — que vem a cada 0,9 a 1,3 s —, e o segundo parecia travar. O tempo
+  /// ainda sem dono entra no tempo total e, se o carro estava parado, na
+  /// espera. Para nao "voltar" na tela quando a leitura seguinte mostra que o
+  /// carro andou, espera e valor nunca diminuem durante a corrida.
+  /// [exato] mostra so o que ja foi contado (Finalizar, recibo).
+  /// Devolve true quando algum numero da tela mudou.
+  bool _mostrarContadores({bool exato = false}) {
+    final pend = exato ? 0.0 : _pendenteS(_agoraMs());
+    final paradoPrevia = _medidor.paradoS + (_modoEspera ? pend : 0);
+    final total = (_medidor.totalS + pend).floor();
+    final parado = paradoPrevia.floor();
+    final valor = _medidor.bandeirada + _medidor.valorDistancia + _medidor.tarifador.valorEspera(paradoPrevia);
+    final antes = '${estado.tempoTotalS}|${estado.tempoParadoS}|${(estado.valorTotal * 100).round()}';
+    if (exato) {
+      estado.tempoTotalS = total;
+      estado.tempoParadoS = parado;
+      estado.valorTotal = valor;
+    } else {
+      estado.tempoTotalS = math.max(estado.tempoTotalS, total);
+      estado.tempoParadoS = math.max(estado.tempoParadoS, parado);
+      estado.valorTotal = math.max(estado.valorTotal, valor);
+    }
+    return antes != '${estado.tempoTotalS}|${estado.tempoParadoS}|${(estado.valorTotal * 100).round()}';
+  }
+
+  /// Conta o tempo ate agora no modo em que o carro estava (parado vira
+  /// espera; andando entra no trecho aberto, que decide distancia OU tempo).
+  void _contarAteAgora() {
+    // Na tela de pagamento o taximetro ja parou: o tempo ali nao conta.
+    if (!corridaAtiva || _pausadaParaPagamento) return;
+    final s = _tempoDesdeAUltimaContagem(_agoraMs());
+    if (s == null) return;
+    if (_modoEspera) {
+      _medidor.parou(s);
+    } else {
+      _medidor.tempoDoTrechoAberto(s);
+    }
   }
 
   /// Parte pura do comeco da corrida (sem GPS e sem Android).
   void _comecarContagem() {
     estado.reiniciar();
     _medidor = MedidorCorrida(_tarifadorDaConfig())..comecar(config.bandeiradaAtual);
-    _ultimoInstanteMs = null;
+    // O tempo comeca a contar no toque de Iniciar (antes o 1o segundo e o
+    // tempo ate o primeiro GPS se perdiam).
+    final agora = _agoraMs();
+    _ultimoInstanteMs = agora;
+    _ultimoGpsMs = agora;
+    _modoEspera = true;
     _ancora = null;
     avisoCorridaRecuperada = null;
     _latAntesDeFechar = null;
@@ -194,7 +261,10 @@ class TaximetroState extends ChangeNotifier {
       }
       estado.reiniciar();
       _ancora = null;
-      _ultimoInstanteMs = null;
+      // O tempo fechado ja entrou acima; daqui em diante conta normal.
+      _ultimoInstanteMs = _agoraMs();
+      _ultimoGpsMs = _ultimoInstanteMs;
+      _modoEspera = true;
       corridaAtiva = true;
       avisoCorridaRecuperada = 'Corrida recuperada: o aplicativo ficou fechado por '
           '${(semMedirS / 60).ceil()} min. A distancia desse tempo entra em linha reta '
@@ -246,11 +316,15 @@ class TaximetroState extends ChangeNotifier {
   /// contando enquanto o passageiro pagava).
   Future<double> pararParaPagamento() async {
     if (!corridaAtiva) return estado.valorTotal;
+    // Conta ate o instante do toque (antes perdia o que passou desde a
+    // ultima leitura do GPS) e so depois para.
+    _contarAteAgora();
     _pausadaParaPagamento = true;
     desligarRelogioDaCorrida();
     await _pararRastreamento();
     _medidor.fecharTrecho();
     _recalcular();
+    _mostrarContadores(exato: true);
     _gravarCorridaEmAndamento(agora: true);
     statusTexto = 'Corrida parada - aguardando pagamento';
     statusClasse = 'espera';
@@ -263,7 +337,9 @@ class TaximetroState extends ChangeNotifier {
   Future<void> retomarAposPagamentoCancelado() async {
     if (!corridaAtiva || !_pausadaParaPagamento) return;
     _pausadaParaPagamento = false;
-    _ultimoInstanteMs = null;
+    // O tempo na tela de pagamento nao e cobrado: volta a contar daqui.
+    _ultimoInstanteMs = _agoraMs();
+    _ultimoGpsMs = _ultimoInstanteMs;
     _ancora = null;
     statusTexto = 'Corrida em andamento';
     statusClasse = 'ativo';
@@ -275,8 +351,10 @@ class TaximetroState extends ChangeNotifier {
   /// O registro da corrida, com os mesmos valores da tela:
   /// valor = bandeirada + distancia + espera.
   RegistroCorrida _montarRegistro(String formaPagamento) {
+    _contarAteAgora();
     _medidor.fecharTrecho();
     _recalcular();
+    _mostrarContadores(exato: true);
     return RegistroCorrida(
       data: DateTime.now(),
       valor: _medidor.total,
@@ -305,6 +383,15 @@ class TaximetroState extends ChangeNotifier {
 
   @visibleForTesting
   RegistroCorrida montarRegistroParaTeste() => _montarRegistro('');
+
+  @visibleForTesting
+  set relogioParaTeste(int Function() agoraMs) => _agoraMs = agoraMs;
+
+  @visibleForTesting
+  void tiqueDoRelogioParaTeste() => _tiqueDoRelogio();
+
+  @visibleForTesting
+  void medirPosicaoParaTeste(Position pos) => _medirPosicao(pos);
 
   // ==================================================================
   // Ciclo de vida
@@ -686,9 +773,16 @@ class TaximetroState extends ChangeNotifier {
     }
     final anterior = _ancora;
     if (anterior == null) {
+      // Primeira leitura: o tempo desde o Iniciar conta como espera (antes
+      // ele era apagado aqui).
+      final agora = _agoraMs();
+      final esperou = _tempoDesdeAUltimaContagem(agora);
+      if (esperou != null) _medidor.parou(esperou);
+      _ultimoGpsMs = agora;
+      _modoEspera = true;
       _ancora = pos;
-      _ultimoInstanteMs = DateTime.now().millisecondsSinceEpoch;
       _recuperarDistanciaDoTempoFechado(pos);
+      _recalcular();
       statusTexto = 'Corrida em andamento';
       statusClasse = 'ativo';
       notifyListeners();
@@ -700,8 +794,9 @@ class TaximetroState extends ChangeNotifier {
       pos.latitude,
       pos.longitude,
     );
-    final agoraMs = DateTime.now().millisecondsSinceEpoch;
+    final agoraMs = _agoraMs();
     final segundos = _tempoDesdeAUltimaContagem(agoraMs);
+    _ultimoGpsMs = agoraMs;
     if (segundos != null && segundos > 0) {
       final velocidadeMs = metros / segundos;
       if (velocidadeMs > Constantes.velocidadeImpossivelMs) {
@@ -723,6 +818,7 @@ class TaximetroState extends ChangeNotifier {
       } else {
         _medidor.descartarTremida();
       }
+      _modoEspera = true;
       _recalcular();
       _ancora = pos;
       statusTexto = 'Parado - cobrando espera';
@@ -730,6 +826,11 @@ class TaximetroState extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    // [metros] e a distancia DESDE A ANCORA: enquanto o trecho nao fecha, a
+    // ancora fica parada e essa distancia ja e o total do trecho (3.1.2:
+    // antes ela era somada de novo a cada leitura e o odometro contava a
+    // mais andando devagar).
+    _modoEspera = false;
     if (_medidor.andou(metros, segundos ?? 0)) {
       _ancora = pos;
       statusTexto = 'Corrida em andamento';
@@ -743,8 +844,10 @@ class TaximetroState extends ChangeNotifier {
   }
 
   void _contarTempoApenas() {
-    final agoraMs = DateTime.now().millisecondsSinceEpoch;
+    final agoraMs = _agoraMs();
     final segundos = _tempoDesdeAUltimaContagem(agoraMs);
+    _ultimoGpsMs = agoraMs;
+    _modoEspera = true;
     if (segundos == null) return;
     _medidor.semGps(segundos);
     _recalcular();
@@ -779,21 +882,29 @@ class TaximetroState extends ChangeNotifier {
     desligarRelogioDaCorrida();
     _relogioCorrida = Timer.periodic(
       const Duration(milliseconds: Constantes.relogioCorridaMs),
-      (_) {
-        if (!corridaAtiva || _pausadaParaPagamento) return;
-        final agoraMs = DateTime.now().millisecondsSinceEpoch;
-        if (_ultimoInstanteMs != null &&
-            (agoraMs - _ultimoInstanteMs!) < Constantes.janelaGpsRecenteMs) {
-          return;
-        }
-        final segundos = _tempoDesdeAUltimaContagem(agoraMs);
-        if (segundos == null) return;
+      (_) => _tiqueDoRelogio(),
+    );
+  }
+
+  /// A cada 1/4 de segundo: com o GPS mudo, conta o tempo como espera
+  /// (continuo, sem pular); com o GPS falando, so anda os contadores da tela.
+  void _tiqueDoRelogio() {
+    if (!corridaAtiva || _pausadaParaPagamento) return;
+    final agoraMs = _agoraMs();
+    final ultimoGps = _ultimoGpsMs;
+    final gpsMudo = ultimoGps == null || agoraMs - ultimoGps >= Constantes.janelaGpsRecenteMs;
+    if (gpsMudo) {
+      final segundos = _tempoDesdeAUltimaContagem(agoraMs);
+      if (segundos != null) {
         // Sem GPS recente: o tempo conta como espera (carro parado).
         _medidor.parou(segundos);
+        _modoEspera = true;
         _recalcular();
         notifyListeners();
-      },
-    );
+        return;
+      }
+    }
+    if (_mostrarContadores()) notifyListeners();
   }
 
   void desligarRelogioDaCorrida() {

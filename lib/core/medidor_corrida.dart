@@ -39,10 +39,14 @@ class MedidorCorrida {
     bufferTempoS = 0;
   }
 
-  /// Carro andando. Devolve true quando o trecho fechou (a ancora do GPS
-  /// pode avancar); false enquanto ainda acumula distancia confiavel.
-  bool andou(double metros, double segundos) {
-    bufferDistanciaM += metros;
+  /// Carro andando. [metrosDesdeAncora] e a distancia do ponto onde o
+  /// trecho comecou (a ancora) ate a leitura atual: enquanto o trecho nao
+  /// fecha, a ancora nao anda, entao essa ja e a distancia do trecho todo
+  /// (3.1.2: antes ela era SOMADA a cada leitura e, devagar, o odometro
+  /// contava a mais). Devolve true quando o trecho fechou (a ancora pode
+  /// avancar); false enquanto ainda acumula distancia confiavel.
+  bool andou(double metrosDesdeAncora, double segundos) {
+    bufferDistanciaM = metrosDesdeAncora;
     bufferTempoS += segundos;
     totalS += segundos;
     if (bufferDistanciaM >= Constantes.distanciaMinimaRuidoM) {
@@ -68,6 +72,13 @@ class MedidorCorrida {
   void semGps(double segundos) {
     totalS += segundos;
     paradoS += segundos;
+  }
+
+  /// Tempo andando ainda sem leitura do GPS (ex.: tocou em Finalizar entre
+  /// duas leituras): entra no trecho aberto, que decide distancia OU tempo.
+  void tempoDoTrechoAberto(double segundos) {
+    bufferTempoS += segundos;
+    totalS += segundos;
   }
 
   /// Tempo sem distancia aproveitavel (salto impossivel do GPS).

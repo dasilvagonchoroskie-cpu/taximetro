@@ -14,9 +14,13 @@ void main() {
 
   MedidorCorrida nova([double bandeirada = 10]) => MedidorCorrida(tarifa)..comecar(bandeirada);
 
+  /// Uma leitura do GPS por segundo. Como no app, cada leitura passa a
+  /// distancia DESDE A ANCORA, que so avanca quando o trecho fecha.
   void rodar(MedidorCorrida m, int metros, {int metrosPorSegundo = 10}) {
+    var desdeAncora = 0.0;
     for (var i = 0; i < metros ~/ metrosPorSegundo; i++) {
-      m.andou(metrosPorSegundo.toDouble(), 1);
+      desdeAncora += metrosPorSegundo;
+      if (m.andou(desdeAncora, 1)) desdeAncora = 0;
     }
   }
 
@@ -97,5 +101,29 @@ void main() {
     expect(volta, isNotNull);
     expect(volta!.total, closeTo(m.total, 1e-9));
     expect(volta.distanciaKm, closeTo(m.distanciaKm, 1e-9));
+  });
+
+  // ---- 3.1.2 ----
+  test('devagar o odometro nao conta em dobro (distancia desde a ancora)', () {
+    final m = nova();
+    m.andou(2, 1); // 2 m da ancora: ainda e tremida possivel
+    m.andou(4, 1); // 4 m da ancora: fecha o trecho com 4 m, nao 2 + 4
+    expect(m.distanciaKm, closeTo(0.004, 1e-9));
+  });
+
+  test('a 7,2 km/h, 300 m rodados marcam 300 m', () {
+    final m = nova();
+    rodar(m, 300, metrosPorSegundo: 2);
+    expect(m.distanciaKm, closeTo(0.300, 1e-9));
+    expect(m.totalS, closeTo(150, 1e-9));
+  });
+
+  test('tempo andando entre duas leituras entra no trecho aberto', () {
+    final m = nova();
+    m.andou(2, 1);
+    m.tempoDoTrechoAberto(0.6);
+    expect(m.totalS, closeTo(1.6, 1e-9));
+    m.fecharTrecho();
+    expect(m.paradoS, closeTo(1.6, 1e-9)); // 2 m valem menos que 1,6 s
   });
 }
