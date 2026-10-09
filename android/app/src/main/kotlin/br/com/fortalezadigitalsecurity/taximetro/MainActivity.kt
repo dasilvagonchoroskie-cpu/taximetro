@@ -4,6 +4,7 @@ import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
@@ -25,6 +26,9 @@ class MainActivity : FlutterActivity() {
                     resultado.notImplemented()
                 }
             }
+        // Velocimetro da tela direto do chip de GPS (3.1.3).
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "taximetro/velocimetro")
+            .setStreamHandler(VelocimetroGps(applicationContext))
         // Tela acesa durante a corrida: o motorista ve o valor sem tocar.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taximetro/tela")
             .setMethodCallHandler { chamada, resultado ->

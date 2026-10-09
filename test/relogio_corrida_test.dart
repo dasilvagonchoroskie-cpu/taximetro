@@ -141,4 +141,24 @@ void main() {
     s.medirPosicaoParaTeste(ponto(0));
     expect(s.estado.valorTotal, closeTo(bandeirada + 1.25 / 60 * s.config.taxaEspera, 1e-9));
   });
+
+  // ---- 3.1.3: velocimetro da tela ----
+  test('velocimetro: a leitura direta do chip aparece na hora', () {
+    comecar();
+    s.medirPosicaoParaTeste(ponto(0, velocidadeMs: 14.2)); // Google: 51 km/h
+    expect(s.velocidadeAtualKmh!.round(), 51);
+    s.velocidadeDiretaParaTeste(57);
+    expect(s.velocidadeAtualKmh!.round(), 57);
+  });
+
+  test('velocimetro: se a leitura direta parar, volta sozinho para a do Google', () {
+    comecar();
+    s.medirPosicaoParaTeste(ponto(0));
+    s.velocidadeDiretaParaTeste(57);
+    avancar(1000);
+    s.medirPosicaoParaTeste(ponto(14, velocidadeMs: 14.2));
+    expect(s.velocidadeAtualKmh!.round(), 57);
+    avancar(2000); // 3 s sem leitura direta
+    expect(s.velocidadeAtualKmh!.round(), 51);
+  });
 }

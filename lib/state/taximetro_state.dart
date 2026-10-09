@@ -12,6 +12,7 @@ import '../core/constantes.dart';
 import '../core/licenca.dart';
 import '../core/medidor_corrida.dart';
 import '../core/tarifador.dart';
+import '../core/velocimetro.dart';
 import '../models/aparencia.dart';
 import '../models/config.dart';
 import '../models/estado_corrida.dart';
@@ -100,6 +101,14 @@ class TaximetroState extends ChangeNotifier {
   int Function() _agoraMs = () => DateTime.now().millisecondsSinceEpoch;
   Timer? _relogioCorrida;
   StreamSubscription<Position>? _posicaoSub;
+
+  /// Velocimetro da tela (3.1.3): leitura direta do chip de GPS, mais
+  /// rapida que a do Google. So para o numero de km/h; nao mexe na cobranca.
+  static const EventChannel _canalVelocimetro = EventChannel('taximetro/velocimetro');
+  StreamSubscription<dynamic>? _velocimetroSub;
+  double? _velDiretoKmh;
+  int? _velDiretoEmMs;
+  double? _velGoogleKmh;
 
 
   /// Ancora: ponto de referencia do trecho acumulado.
@@ -633,7 +642,7 @@ class TaximetroState extends ChangeNotifier {
       return false;
     }
     _comecarContagem();
-    velocidadeAtualKmh = null;
+    _zerarVelocimetro();
     avisoGps = null;
     statusTexto = 'Corrida iniciada - aguardando GPS';
     statusClasse = 'ativo';
@@ -655,7 +664,7 @@ class TaximetroState extends ChangeNotifier {
     estado.reiniciar();
     _medidor = MedidorCorrida(_tarifadorDaConfig());
     avisoCorridaRecuperada = null;
-    velocidadeAtualKmh = null;
+    _zerarVelocimetro();
     statusTexto = 'Corrida cancelada';
     statusClasse = 'aguardando';
     notifyListeners();
@@ -669,7 +678,7 @@ class TaximetroState extends ChangeNotifier {
       estado.reiniciar();
       _medidor = MedidorCorrida(_tarifadorDaConfig());
     }
-    velocidadeAtualKmh = null;
+    _zerarVelocimetro();
     statusTexto = corridaAtiva ? 'Corrida reiniciada' : 'Pronto para iniciar';
     statusClasse = corridaAtiva ? 'ativo' : 'aguardando';
     notifyListeners();
@@ -690,7 +699,7 @@ class TaximetroState extends ChangeNotifier {
     _ultimoInstanteMs = null;
     _ancora = null;
     avisoCorridaRecuperada = null;
-    velocidadeAtualKmh = null;
+    _zerarVelocimetro();
     statusTexto = 'Corrida finalizada';
     statusClasse = 'aguardando';
     notifyListeners();
@@ -745,11 +754,16 @@ class TaximetroState extends ChangeNotifier {
       },
       onError: (Object erro) => avisarFalhaNoGps(erro),
     );
+    _ligarVelocimetroDireto();
   }
 
   Future<void> _pararRastreamento() async {
     await _posicaoSub?.cancel();
     _posicaoSub = null;
+    await _velocimetroSub?.cancel();
+    _velocimetroSub = null;
+    _velDiretoKmh = null;
+    _velDiretoEmMs = null;
   }
 
   void avisarFalhaNoGps(Object erro) {
@@ -759,8 +773,55 @@ class TaximetroState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Atualiza o numero de km/h da tela. Devolve true se mudou.
+  bool _mostrarVelocidade() {
+    final antes = velocidadeAtualKmh?.round();
+    final emMs = _velDiretoEmMs;
+    velocidadeAtualKmh = Velocimetro.paraTela(
+      diretoKmh: _velDiretoKmh,
+      idadeDiretoMs: emMs == null ? null : _agoraMs() - emMs,
+      googleKmh: _velGoogleKmh,
+    );
+    return antes != velocidadeAtualKmh?.round();
+  }
+
+  void _zerarVelocimetro() {
+    _velDiretoKmh = null;
+    _velDiretoEmMs = null;
+    _velGoogleKmh = null;
+    velocidadeAtualKmh = null;
+  }
+
+  void _ligarVelocimetroDireto() {
+    _velocimetroSub?.cancel();
+    try {
+      _velocimetroSub = _canalVelocimetro.receiveBroadcastStream().listen(
+        (dado) {
+          if (dado is! Map) return;
+          final ms = (dado['ms'] as num?)?.toDouble();
+          if (ms == null || ms.isNaN || ms < 0) return;
+          _velDiretoKmh = ms * 3.6;
+          _velDiretoEmMs = _agoraMs();
+          if (_mostrarVelocidade()) notifyListeners();
+        },
+        // Sem o chip liberado: a tela fica com a velocidade do Google.
+        onError: (Object _) {},
+      );
+    } catch (_) {
+      _velocimetroSub = null;
+    }
+  }
+
+  @visibleForTesting
+  void velocidadeDiretaParaTeste(double kmh) {
+    _velDiretoKmh = kmh;
+    _velDiretoEmMs = _agoraMs();
+    _mostrarVelocidade();
+  }
+
   void _medirPosicao(Position pos) {
-    velocidadeAtualKmh = pos.speed >= 0 ? pos.speed * 3.6 : null;
+    _velGoogleKmh = pos.speed >= 0 ? pos.speed * 3.6 : null;
+    _mostrarVelocidade();
     ultimaPosicao = pos;
     if (!corridaAtiva || _pausadaParaPagamento) {
       notifyListeners();
@@ -900,11 +961,14 @@ class TaximetroState extends ChangeNotifier {
         _medidor.parou(segundos);
         _modoEspera = true;
         _recalcular();
+        _mostrarVelocidade();
         notifyListeners();
         return;
       }
     }
-    if (_mostrarContadores()) notifyListeners();
+    final mudouContador = _mostrarContadores();
+    final mudouVelocidade = _mostrarVelocidade();
+    if (mudouContador || mudouVelocidade) notifyListeners();
   }
 
   void desligarRelogioDaCorrida() {
@@ -1004,6 +1068,7 @@ class TaximetroState extends ChangeNotifier {
   void dispose() {
     desligarRelogioDaCorrida();
     _posicaoSub?.cancel();
+    _velocimetroSub?.cancel();
     super.dispose();
   }
 }
