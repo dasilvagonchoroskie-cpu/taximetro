@@ -42,6 +42,15 @@ android {
         versionName = flutter.versionName
     }
 
+    // Bibliotecas nativas comprimidas dentro do APK (3.1.3): o arquivo cai
+    // de ~55 MB para ~25 MB e cabe como anexo no chat e no WhatsApp. O
+    // Android descompacta na instalacao; o aplicativo funciona igual.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     signingConfigs {
         create("release") {
             if (temAssinaturaDeProducao) {
