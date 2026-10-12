@@ -9,7 +9,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constantes.dart';
-import '../core/licenca.dart';
 import '../core/medidor_corrida.dart';
 import '../core/tarifador.dart';
 import '../core/velocimetro.dart';
@@ -56,18 +55,6 @@ class TaximetroState extends ChangeNotifier {
   int _ultimaGravacaoMs = 0;
   bool _pausadaParaPagamento = false;
   static const MethodChannel _canalTela = MethodChannel('taximetro/tela');
-  bool licenciado = false;
-  String? codigoAparelho;
-  String? erroLicenca;
-
-  /// Chave curta guardada (para renovar sozinho e preencher a tela).
-  String? chaveGuardada;
-  bool ativandoLicenca = false;
-
-  static const String _kAssinatura = '${Constantes.chaveLicenca}.assinatura';
-  static const String _kValidade = '${Constantes.chaveLicenca}.validade';
-  static const String _kChave = '${Constantes.chaveLicenca}.chave';
-  static const String _kDataVista = '${Constantes.chaveLicenca}.dataVista';
 
   // ---- Historico ----
   List<RegistroCorrida> historico = [];
@@ -437,106 +424,11 @@ class TaximetroState extends ChangeNotifier {
       }
     }
 
-    await _carregarCodigoAparelho();
-    await _conferirLicencaNaAbertura(prefs);
-    if (licenciado) await _recuperarCorridaEmAndamento(prefs);
+    // A licenca agora e do pacote fortaleza_licenca (portao em app.dart).
+    await _recuperarCorridaEmAndamento(prefs);
     pronto = true;
     notifyListeners();
   }
-
-  /// Mesmo identificador que o plugin nativo da versao antiga entregava
-  /// (ANDROID_ID), pela mesma conta: o codigo do aparelho nao muda.
-  Future<void> _carregarCodigoAparelho() async {
-    var bruto = '';
-    try {
-      bruto = await const MethodChannel('taximetro/licenca').invokeMethod<String>('idDoAparelho') ?? '';
-    } catch (_) {
-      bruto = '';
-    }
-    codigoAparelho = bruto.isEmpty ? null : Licenca.codigoDoAparelho(bruto);
-  }
-
-  /// Confere a licenca toda vez que o app abre (logica do original).
-  Future<void> _conferirLicencaNaAbertura(SharedPreferences prefs) async {
-    licenciado = false;
-    chaveGuardada = prefs.getString(_kChave);
-    final codigo = codigoAparelho ?? '';
-    final assinatura = prefs.getString(_kAssinatura) ?? '';
-    final validade = prefs.getString(_kValidade) ?? 'sempre';
-    if (codigo.isEmpty || assinatura.isEmpty) return;
-    if (!Licenca.conferir(codigo, assinatura, validade)) return;
-    // Licenca sem prazo: nunca mais precisa de internet.
-    if (validade == 'sempre') {
-      licenciado = true;
-      return;
-    }
-    final fim = DateTime.tryParse(validade);
-    if (fim == null) return;
-    final diasQueFaltam = fim.difference(DateTime.now()).inMinutes / 1440;
-    final mexeram = _relogioFoiPraTras(prefs);
-    if (diasQueFaltam > Licenca.diasPraRenovarAntes && !mexeram) {
-      licenciado = true;
-      return;
-    }
-    // Perto de vencer, vencida ou relogio mexido: tenta renovar sozinho.
-    if (await _renovarNoServidor(prefs)) {
-      licenciado = true;
-      return;
-    }
-    if (diasQueFaltam > 0 && !mexeram) {
-      licenciado = true;
-      avisoGps = 'Seu acesso vence em ${_dataPorExtenso(fim)}. Abra o aplicativo '
-          'com a internet ligada pra renovar sozinho.';
-      return;
-    }
-    erroLicenca = mexeram
-        ? 'A data do celular não confere. Ligue a internet e toque em Ativar.'
-        : 'Seu acesso venceu em ${_dataPorExtenso(fim)}. Ligue a internet e toque em '
-            'Ativar. Se não liberar, fale com quem te vendeu o aplicativo.';
-  }
-
-  /// Relogio atrasado mais de um dia em relacao a ultima vez que o app viu.
-  bool _relogioFoiPraTras(SharedPreferences prefs) {
-    final vista = int.tryParse(prefs.getString(_kDataVista) ?? '') ?? 0;
-    final agora = DateTime.now().millisecondsSinceEpoch;
-    if (agora > vista) {
-      unawaited(prefs.setString(_kDataVista, '$agora'));
-      return false;
-    }
-    return (vista - agora) > 86400000;
-  }
-
-  Future<bool> _renovarNoServidor(SharedPreferences prefs) async {
-    final chave = prefs.getString(_kChave) ?? '';
-    final codigo = codigoAparelho ?? '';
-    if (chave.isEmpty || codigo.isEmpty) return false;
-    final resposta = await Licenca.ativarNoServidor(chave, codigo);
-    if (!resposta.ok || !Licenca.conferir(codigo, resposta.assinatura, resposta.validade)) {
-      return false;
-    }
-    await _guardarLicenca(prefs, resposta.assinatura, resposta.validade, chave);
-    return true;
-  }
-
-  Future<void> _guardarLicenca(
-    SharedPreferences prefs,
-    String assinatura,
-    String validade,
-    String? chave,
-  ) async {
-    await prefs.setString(_kAssinatura, assinatura);
-    await prefs.setString(_kValidade, validade.isEmpty ? 'sempre' : validade);
-    if (chave != null && chave.isNotEmpty) {
-      await prefs.setString(_kChave, chave);
-      chaveGuardada = chave;
-    }
-    await prefs.setString(_kDataVista, '${DateTime.now().millisecondsSinceEpoch}');
-  }
-
-  static String _dataPorExtenso(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-
-  /// Identificador bruto e estavel do aparelho.
 
   // ==================================================================
   // Persistencia
@@ -558,76 +450,6 @@ class TaximetroState extends ChangeNotifier {
       Constantes.chaveHistorico,
       jsonEncode(historico.map((r) => r.toJson()).toList()),
     );
-  }
-
-  // ==================================================================
-  // Licenca
-  // ==================================================================
-  /// Ativa com a chave curta (servidor) ou com a chave antiga comprida.
-  Future<bool> ativarLicenca(String digitada) async {
-    if (ativandoLicenca) return false;
-    final codigo = codigoAparelho ?? '';
-    if (codigo.isEmpty) {
-      erroLicenca = 'Não consegui identificar este aparelho. Feche e abra o aplicativo de novo.';
-      notifyListeners();
-      return false;
-    }
-    final prefs = await SharedPreferences.getInstance();
-    // Chave antiga, comprida: confere aqui mesmo, sem internet.
-    final comprida = digitada.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
-    if (comprida.length >= 80) {
-      if (!Licenca.conferir(codigo, comprida, 'sempre')) {
-        erroLicenca = 'Essa chave não serve neste aparelho.';
-        notifyListeners();
-        return false;
-      }
-      await _guardarLicenca(prefs, comprida, 'sempre', null);
-      return _liberar();
-    }
-    final chave = Licenca.chaveCurta(digitada);
-    if (chave == null) {
-      erroLicenca = 'A chave tem 16 letras e números, em quatro grupos de quatro.';
-      notifyListeners();
-      return false;
-    }
-    ativandoLicenca = true;
-    erroLicenca = null;
-    notifyListeners();
-    final resposta = await Licenca.ativarNoServidor(chave, codigo);
-    ativandoLicenca = false;
-    if (!resposta.ok) {
-      erroLicenca = resposta.motivo.isEmpty ? 'Não deu para ativar.' : resposta.motivo;
-      notifyListeners();
-      return false;
-    }
-    if (!Licenca.conferir(codigo, resposta.assinatura, resposta.validade)) {
-      erroLicenca = 'A liberação veio errada. Fale com quem te passou a chave.';
-      notifyListeners();
-      return false;
-    }
-    await _guardarLicenca(prefs, resposta.assinatura, resposta.validade, chave);
-    return _liberar();
-  }
-
-  bool _liberar() {
-    erroLicenca = null;
-    licenciado = true;
-    notifyListeners();
-    return true;
-  }
-
-  /// Apaga so a liberacao guardada. Historico e tarifa ficam; na proxima
-  /// abertura o aplicativo pede a chave de novo (como no original).
-  Future<void> desativarEsteAparelho() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kAssinatura);
-    await prefs.remove(_kValidade);
-    await prefs.remove(_kChave);
-    await prefs.remove('${Constantes.chaveLicenca}.ativa');
-    chaveGuardada = null;
-    erroLicenca = null;
-    licenciado = false;
-    notifyListeners();
   }
 
   // ==================================================================

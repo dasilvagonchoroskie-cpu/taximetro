@@ -1,5 +1,6 @@
 package br.com.fortalezadigitalsecurity.taximetro
 
+import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -10,20 +11,22 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        // Mesmo identificador que o LicencaPlugin da versao antiga entregava.
-        // Com a mesma chave de assinatura do APK, o Android devolve o mesmo
-        // ANDROID_ID e o codigo do aparelho nao muda na atualizacao.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "taximetro/licenca")
+        // Licenca (pacote fortaleza_licenca, versao 3.2): o mesmo ANDROID_ID de
+        // sempre. Com a mesma chave de assinatura do APK, o Android devolve o
+        // mesmo ANDROID_ID e o codigo do aparelho nao muda na atualizacao.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "fortaleza/licenca")
             .setMethodCallHandler { chamada, resultado ->
-                if (chamada.method == "idDoAparelho") {
-                    val id = try {
-                        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-                    } catch (erro: Exception) {
-                        null
+                when (chamada.method) {
+                    "idDoAparelho" -> {
+                        val id = try {
+                            Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                        } catch (erro: Exception) {
+                            null
+                        }
+                        resultado.success(id ?: "")
                     }
-                    resultado.success(id ?: "")
-                } else {
-                    resultado.notImplemented()
+                    "modelo" -> resultado.success("${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                    else -> resultado.notImplemented()
                 }
             }
         // Velocimetro da tela direto do chip de GPS (3.1.3).
