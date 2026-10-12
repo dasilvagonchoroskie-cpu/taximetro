@@ -25,7 +25,8 @@ dependencies:
     git:
       url: https://github.com/dasilvagonchoroskie-cpu/fortaleza-central-licencas.git
       path: pacote/fortaleza_licenca
-      ref: licenca-v1
+      # licenca-v1 (commit fixo do pacote: so muda quando trocarmos aqui)
+      ref: 8d208fbadafd65a681bd81473a4b49619b041b4c
 
 dev_dependencies:
   flutter_test:
