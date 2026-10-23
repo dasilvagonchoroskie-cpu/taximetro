@@ -61,6 +61,14 @@ void main() {
     }
   });
 
+  test('valores com ponto de milhar', () {
+    expect(reais(10), 'R\$ 10,00');
+    expect(reais(0.94), 'R\$ 0,94');
+    expect(reais(3177.45), 'R\$ 3.177,45');
+    expect(reais(1234567.8), 'R\$ 1.234.567,80');
+    expect(reais(100000), 'R\$ 100.000,00');
+  });
+
   test('trajeto "Origem -> Destino" vira duas linhas no comprovante', () {
     final p = partesDoTrajeto('Rodoviária -> Hospital Municipal');
     expect(p.origem, 'Rodoviária');

@@ -143,7 +143,19 @@ String nomeDaForma(String forma) {
   return _formas[f] ?? textoPdf(forma);
 }
 
-String _real(double v) => 'R\$ ${Formato.moeda(v)}';
+/// R\$ 3.177,45 (com ponto de milhar, como o contador espera).
+String reais(double v) {
+  final centavos = (v * 100).round();
+  final absoluto = centavos.abs();
+  final inteiro = (absoluto ~/ 100).toString();
+  final grupos = StringBuffer();
+  for (var i = 0; i < inteiro.length; i++) {
+    if (i > 0 && (inteiro.length - i) % 3 == 0) grupos.write('.');
+    grupos.write(inteiro[i]);
+  }
+  final sinal = centavos < 0 ? '-' : '';
+  return 'R\$ $sinal$grupos,${(absoluto % 100).toString().padLeft(2, '0')}';
+}
 
 /// Corta texto muito comprido (o comprovante tem uma pagina so).
 String _corte(String s, int max) => s.length <= max ? s : '${s.substring(0, max - 3).trimRight()}...';
@@ -338,7 +350,7 @@ Future<List<int>> pdfComprovante(
               children: [
                 pw.Text('VALOR DA CORRIDA', style: _t(7.5, negrito: true, cor: _medio, espaco: 0.8)),
                 pw.SizedBox(height: 3),
-                pw.Text(_real(r.valor), style: _t(26, negrito: true, cor: _destaque)),
+                pw.Text(reais(r.valor), style: _t(26, negrito: true, cor: _destaque)),
                 pw.SizedBox(height: 3),
                 pw.Text('${dataPorExtenso(r.data)}, às ${hora(r.data)}', style: _t(9, cor: _medio)),
                 if (forma.isNotEmpty) ...[
@@ -373,7 +385,7 @@ Future<List<int>> pdfComprovante(
                   children: [
                     pw.SizedBox(width: 92, child: pw.Text(l.descricao, style: _t(9.5, cor: _medio))),
                     pw.Expanded(child: pw.Text(l.detalhe, style: _t(8.5, cor: _claro))),
-                    pw.Text(_real(l.valor), style: _t(9.5, negrito: true)),
+                    pw.Text(reais(l.valor), style: _t(9.5, negrito: true)),
                   ],
                 ),
               ),
@@ -384,7 +396,7 @@ Future<List<int>> pdfComprovante(
             child: pw.Row(
               children: [
                 pw.Expanded(child: pw.Text('Total', style: _t(10.5, negrito: true))),
-                pw.Text(_real(r.valor), style: _t(10.5, negrito: true)),
+                pw.Text(reais(r.valor), style: _t(10.5, negrito: true)),
               ],
             ),
           ),
@@ -456,6 +468,7 @@ Future<List<int>> pdfRelatorio(
     required List<List<String>> linhas,
     required Map<int, pw.TableColumnWidth> larguras,
     required Set<int> aDireita,
+    bool totalNaUltima = false,
   }) =>
       pw.TableHelper.fromTextArray(
         headers: cabecalho,
@@ -469,6 +482,9 @@ Future<List<int>> pdfRelatorio(
         oddRowDecoration: pw.BoxDecoration(color: _fundo),
         columnWidths: larguras,
         border: borda,
+        // A linha "Total" (a ultima) em negrito. rowNum conta o cabecalho.
+        textStyleBuilder: (coluna, dado, linha) =>
+            totalNaUltima && linha == linhas.length ? _t(8, negrito: true) : null,
       );
 
   doc.addPage(
@@ -514,7 +530,7 @@ Future<List<int>> pdfRelatorio(
               numero('Corridas', '${g.quantidade}'),
               numero('Distância', '${Formato.km(g.km)} km'),
               numero('Tempo rodando', Formato.tempo(g.tempoS)),
-              numero('Total recebido', _real(g.valor), destaque: true),
+              numero('Total recebido', reais(g.valor), destaque: true),
             ],
           ),
 
@@ -523,11 +539,12 @@ Future<List<int>> pdfRelatorio(
           tabela(
             cabecalho: ['Forma de pagamento', 'Corridas', 'Valor'],
             linhas: [
-              for (final e in resumo.porForma) [e.key, '${e.value.quantidade}', _real(e.value.valor)],
-              ['Total', '${g.quantidade}', _real(g.valor)],
+              for (final e in resumo.porForma) [e.key, '${e.value.quantidade}', reais(e.value.valor)],
+              ['Total', '${g.quantidade}', reais(g.valor)],
             ],
             larguras: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(1), 2: const pw.FlexColumnWidth(1.4)},
             aDireita: {1, 2},
+            totalNaUltima: true,
           ),
 
           // ---- por dia ----
@@ -537,7 +554,7 @@ Future<List<int>> pdfRelatorio(
               cabecalho: ['Dia', 'Corridas', 'Km', 'Valor'],
               linhas: [
                 for (final e in resumo.porDia)
-                  [dataCurta(e.key), '${e.value.quantidade}', Formato.km(e.value.km), _real(e.value.valor)],
+                  [dataCurta(e.key), '${e.value.quantidade}', Formato.km(e.value.km), reais(e.value.valor)],
               ],
               larguras: {
                 0: const pw.FlexColumnWidth(2),
@@ -550,6 +567,9 @@ Future<List<int>> pdfRelatorio(
           ],
 
           // ---- uma linha por corrida ----
+          // Com o resumo por dia, a lista comeca numa pagina nova: assim o
+          // cabecalho da tabela nao fica sozinho no pe da primeira pagina.
+          if (resumo.porDia.length > 1) pw.NewPage(),
           _tituloSecao('Corridas'),
           tabela(
             cabecalho: ['Nº', 'Data', 'Hora', 'Trajeto', 'Km', 'Tempo', 'Pagamento', 'Valor'],
@@ -563,7 +583,7 @@ Future<List<int>> pdfRelatorio(
                   Formato.km(lista[i].distanciaKm),
                   Formato.tempo(lista[i].tempoS),
                   nomeDaForma(lista[i].formaPagamento),
-                  _real(lista[i].valor),
+                  reais(lista[i].valor),
                 ],
             ],
             larguras: {
@@ -582,7 +602,7 @@ Future<List<int>> pdfRelatorio(
           pw.Row(
             children: [
               pw.Expanded(child: pw.Text('Total do período', style: _t(11, negrito: true))),
-              pw.Text(_real(g.valor), style: _t(11, negrito: true)),
+              pw.Text(reais(g.valor), style: _t(11, negrito: true)),
             ],
           ),
         ],
