@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../core/formato.dart';
 import '../models/registro_corrida.dart';
 import '../state/taximetro_state.dart';
 import '../widgets/ui.dart';
+import 'compartilhar_pdf.dart';
 import 'recibo_pdf.dart';
 
 class HistoricoScreen extends StatefulWidget {
@@ -29,11 +29,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
       appBar: AppBar(
         title: const Text('Historico'),
         actions: [
-          IconButton(
-            tooltip: 'Exportar PDF',
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: lista.isEmpty ? null : () => _exportar(context, s, lista),
-          ),
           IconButton(
             tooltip: 'Limpar historico',
             icon: const Icon(Icons.delete_outline),
@@ -154,12 +149,27 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                       ],
                     ),
                   ),
+                  // Relatorio de todas as corridas do periodo (contabilidade).
+                  // Antes era um icone pequeno no topo, facil de nao achar.
+                  const SizedBox(height: 10),
+                  BotaoPdf(
+                    rotulo: 'RELATÓRIO DO PERÍODO EM PDF',
+                    habilitado: lista.isNotEmpty,
+                    acao: () => compartilharRelatorio(context, s, lista),
+                  ),
                 ],
               ),
             ),
             Expanded(
               child: lista.isEmpty
-                  ? const Vazio(texto: 'Nenhuma corrida nesse periodo.', icon: Icons.receipt_long_outlined)
+                  ? Vazio(
+                      // O filtro abre em "Hoje": a corrida de ontem some da
+                      // lista e parece que nao existe.
+                      texto: s.historico.isEmpty
+                          ? 'Nenhuma corrida registrada ainda.'
+                          : 'Nenhuma corrida nesse período.\nAs corridas de outros dias aparecem em 7 dias, Mês ou Escolher.',
+                      icon: Icons.receipt_long_outlined,
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                       itemCount: lista.length,
@@ -170,16 +180,6 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _exportar(BuildContext context, TaximetroState s, List<RegistroCorrida> lista) async {
-    final arquivo = await gerarPdfHistorico(s, lista);
-    if (arquivo == null || !context.mounted) return;
-
-    await Share.shareXFiles(
-      [XFile(arquivo.path)],
-      subject: 'Relatorio de corridas - Taximetro',
     );
   }
 
@@ -208,48 +208,68 @@ class _ItemHistorico extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.colorScheme.surface,
-        border: Border.all(color: t.dividerColor),
+    final s = context.read<TaximetroState>();
+    // Tocar no cartao abre o comprovante completo (3.2.1).
+    return Material(
+      color: t.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: t.dividerColor),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => ReciboScreen(registro: registro, doHistorico: true)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                Formato.dataHistorico(registro.data),
-                style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.6)),
+              Row(
+                children: [
+                  Text(
+                    Formato.dataHistorico(registro.data),
+                    style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.6)),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'R\$ ${Formato.moeda(registro.valor)}',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: t.colorScheme.primary),
+                  ),
+                ],
               ),
-              const Spacer(),
+              if (registro.trajeto.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(registro.trajeto, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              ],
+              const SizedBox(height: 6),
               Text(
-                'R\$ ${Formato.moeda(registro.valor)}',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: t.colorScheme.primary),
+                '${Formato.km(registro.distanciaKm)} km - ${Formato.tempo(registro.tempoS)}',
+                style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.7)),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                registro.detalhamento,
+                style: TextStyle(fontSize: 11, color: t.colorScheme.onSurface.withValues(alpha: 0.55)),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  if (registro.formaPagamento.isNotEmpty)
+                    Selo(texto: (rotuloPagamento[registro.formaPagamento] ?? registro.formaPagamento).toUpperCase()),
+                  const Spacer(),
+                  // Um toque: PDF desta corrida, pronto para o WhatsApp.
+                  BotaoPdf(
+                    rotulo: 'Comprovante PDF',
+                    compacto: true,
+                    acao: () => compartilharComprovante(context, s, registro),
+                  ),
+                ],
               ),
             ],
           ),
-          if (registro.trajeto.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(registro.trajeto, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          ],
-          const SizedBox(height: 6),
-          Text(
-            '${Formato.km(registro.distanciaKm)} km - ${Formato.tempo(registro.tempoS)}',
-            style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.7)),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            registro.detalhamento,
-            style: TextStyle(fontSize: 11, color: t.colorScheme.onSurface.withValues(alpha: 0.55)),
-          ),
-          if (registro.formaPagamento.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Selo(texto: (rotuloPagamento[registro.formaPagamento] ?? registro.formaPagamento).toUpperCase()),
-          ],
-        ],
+        ),
       ),
     );
   }

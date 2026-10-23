@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constantes.dart';
 import '../core/medidor_corrida.dart';
+import '../core/pdf_corrida.dart' as documento;
 import '../core/tarifador.dart';
 import '../core/velocimetro.dart';
 import '../models/aparencia.dart';
@@ -834,6 +835,27 @@ class TaximetroState extends ChangeNotifier {
 
   double totalDoFiltro() =>
       historicoFiltrado().fold(0, (soma, item) => soma + item.valor);
+
+  /// O periodo do filtro, por extenso, para o relatorio em PDF (3.2.1).
+  String descricaoPeriodo({DateTime? agora}) {
+    final hoje = agora ?? DateTime.now();
+    String d(DateTime x) => documento.dataCurta(x);
+    switch (filtroPeriodoAtual) {
+      case FiltroPeriodo.hoje:
+        return 'Hoje, ${d(hoje)}';
+      case FiltroPeriodo.semana:
+        return 'Últimos 7 dias (${d(hoje.subtract(const Duration(days: 7)))} a ${d(hoje)})';
+      case FiltroPeriodo.mes:
+        return '${documento.mesPorExtenso(hoje)} (até ${d(hoje)})';
+      case FiltroPeriodo.personalizado:
+        final de = filtroDe;
+        final ate = filtroAte;
+        if (de != null && ate != null) return 'De ${d(de)} a ${d(ate)}';
+        if (de != null) return 'A partir de ${d(de)}';
+        if (ate != null) return 'Até ${d(ate)}';
+        return 'Todas as corridas';
+    }
+  }
 
   Future<void> limparHistorico() async {
     historico = [];

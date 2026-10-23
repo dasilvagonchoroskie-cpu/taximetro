@@ -1,110 +1,20 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 
 import '../core/formato.dart';
+import '../core/pdf_corrida.dart' show dataCurta, hora;
 import '../models/registro_corrida.dart';
 import '../state/taximetro_state.dart';
 import '../widgets/ui.dart';
+import 'compartilhar_pdf.dart';
 
-/// Gera o relatorio de corridas em PDF (equivalente ao exportarHistoricoPdf).
-Future<File?> gerarPdfHistorico(TaximetroState s, List<RegistroCorrida> lista) async {
-  final doc = pw.Document();
-  final total = lista.fold<double>(0, (soma, item) => soma + item.valor);
-  final km = lista.fold<double>(0, (soma, item) => soma + item.distanciaKm);
-
-  doc.addPage(
-    pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(28),
-      build: (contexto) => [
-        pw.Header(
-          level: 0,
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('Relatorio de corridas', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 4),
-              pw.Text('Taximetro - gerado em ${Formato.dataHistorico(DateTime.now())}',
-                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        pw.Container(
-          padding: const pw.EdgeInsets.all(10),
-          decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: pw.BorderRadius.circular(6)),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              _linha('Motorista', s.config.motoristaNome.isEmpty ? '—' : s.config.motoristaNome),
-              _linha('CNH', '${s.config.motoristaCnh} ${s.config.cnhCategoria}'.trim()),
-              _linha('Veiculo', s.config.descricaoVeiculo.isEmpty ? '—' : s.config.descricaoVeiculo),
-              _linha('Placa', s.config.veiculoPlaca.isEmpty ? '—' : s.config.veiculoPlaca),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 14),
-        pw.TableHelper.fromTextArray(
-          headers: const ['Data', 'Trajeto', 'Km', 'Tempo', 'Pagamento', 'Valor'],
-          headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
-          cellStyle: const pw.TextStyle(fontSize: 8),
-          cellAlignment: pw.Alignment.centerLeft,
-          data: lista
-              .map((r) => [
-                    Formato.dataHistorico(r.data),
-                    r.trajeto.isEmpty ? '—' : r.trajeto,
-                    Formato.km(r.distanciaKm),
-                    Formato.tempo(r.tempoS),
-                    r.formaPagamento.isEmpty ? '—' : r.formaPagamento,
-                    'R\$ ${Formato.moeda(r.valor)}',
-                  ])
-              .toList(),
-        ),
-        pw.SizedBox(height: 14),
-        pw.Container(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text('Corridas: ${lista.length}', style: const pw.TextStyle(fontSize: 11)),
-              pw.Text('Distancia total: ${Formato.km(km)} km', style: const pw.TextStyle(fontSize: 11)),
-              pw.SizedBox(height: 4),
-              pw.Text('TOTAL: R\$ ${Formato.moeda(total)}',
-                  style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-
-  final dir = await getApplicationDocumentsDirectory();
-  final arquivo = File('${dir.path}/taximetro-${DateTime.now().millisecondsSinceEpoch}.pdf');
-  await arquivo.writeAsBytes(await doc.save());
-  return arquivo;
-}
-
-pw.Widget _linha(String rotulo, String valor) => pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 1),
-      child: pw.Row(
-        children: [
-          pw.SizedBox(width: 70, child: pw.Text(rotulo, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700))),
-          pw.Expanded(child: pw.Text(valor, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold))),
-        ],
-      ),
-    );
-
-/// Tela de recibo exibida apos finalizar.
+/// Comprovante da corrida: aparece depois de finalizar e, desde a 3.2.1,
+/// tambem ao tocar numa corrida do historico ([doHistorico]).
 class ReciboScreen extends StatelessWidget {
-  const ReciboScreen({super.key, required this.registro});
+  const ReciboScreen({super.key, required this.registro, this.doHistorico = false});
 
   final RegistroCorrida registro;
+  final bool doHistorico;
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +22,7 @@ class ReciboScreen extends StatelessWidget {
     final s = context.read<TaximetroState>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Comprovante')),
+      appBar: AppBar(title: const Text('Comprovante da corrida')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -136,7 +46,7 @@ class ReciboScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      Formato.dataHistorico(registro.data),
+                      '${dataCurta(registro.data)} às ${hora(registro.data)}',
                       style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.6)),
                     ),
                   ],
@@ -177,15 +87,23 @@ class ReciboScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
-              BotaoApp(
-                label: 'EXPORTAR PDF',
-                icon: Icons.picture_as_pdf_outlined,
-                cor: t.colorScheme.surfaceContainerHighest,
-                corTexto: t.colorScheme.onSurface,
-                onPressed: () => gerarPdfHistorico(s, [registro]),
+              // Abre o "compartilhar" do celular com o PDF: WhatsApp do
+              // passageiro, e-mail, Drive... (antes so gravava e nao abria nada)
+              BotaoPdf(
+                rotulo: 'ENVIAR COMPROVANTE EM PDF',
+                principal: doHistorico,
+                acao: () => compartilharComprovante(context, s, registro),
               ),
               const SizedBox(height: 10),
-              BotaoApp(label: 'CONCLUIR', icon: Icons.check, onPressed: () => Navigator.of(context).pop()),
+              doHistorico
+                  ? BotaoApp(
+                      label: 'VOLTAR',
+                      icon: Icons.arrow_back,
+                      cor: t.colorScheme.surfaceContainerHighest,
+                      corTexto: t.colorScheme.onSurface,
+                      onPressed: () => Navigator.of(context).pop(),
+                    )
+                  : BotaoApp(label: 'CONCLUIR', icon: Icons.check, onPressed: () => Navigator.of(context).pop()),
               const SizedBox(height: 20),
             ],
           ),

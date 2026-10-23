@@ -39,4 +39,17 @@ void main() {
     expect(r.valor, closeTo(r.bandeirada + r.valorDistancia + r.valorEspera, 1e-9));
     expect(r.bandeirada, s.config.bandeiradaAtual);
   });
+
+  test('descricao do periodo para o relatorio em PDF', () {
+    final s = TaximetroState();
+    final agora = DateTime(2026, 10, 23, 9, 30);
+    s.definirFiltro(FiltroPeriodo.mes);
+    expect(s.descricaoPeriodo(agora: agora), 'Outubro de 2026 (até 23/10/2026)');
+    s.definirFiltro(FiltroPeriodo.semana);
+    expect(s.descricaoPeriodo(agora: agora), 'Últimos 7 dias (16/10/2026 a 23/10/2026)');
+    s.definirFiltro(FiltroPeriodo.hoje);
+    expect(s.descricaoPeriodo(agora: agora), 'Hoje, 23/10/2026');
+    s.definirPeriodoPersonalizado(DateTime(2026, 10, 1), DateTime(2026, 10, 15));
+    expect(s.descricaoPeriodo(agora: agora), 'De 01/10/2026 a 15/10/2026');
+  });
 }

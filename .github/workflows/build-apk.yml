@@ -57,6 +57,16 @@ jobs:
             exit 1
           fi
 
+      # PDFs de amostra gerados pelos testes (dados ficticios): o job do
+      # emulador os grava em logs/amostras-pdf para conferir o visual.
+      - name: Guardar as amostras de PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amostras-pdf
+          path: build/amostras-pdf/
+          if-no-files-found: ignore
+
       - name: Preparar a chave de assinatura (a mesma da versao antiga)
         env:
           CHAVE: ${{ secrets.TAXIMETRO_KEYSTORE_BASE64 }}
@@ -127,14 +137,23 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash ci/abrir-no-emulador.sh br.com.fortalezadigitalsecurity.taximetro saida/taximetro.apk
 
+      - name: Baixar as amostras de PDF
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: amostras-pdf
+          path: amostras-pdf
+
       - name: Guardar fotos e registro do emulador no repositorio
         if: always()
         run: |
-          mkdir -p logs/emulador
+          mkdir -p logs/emulador logs/amostras-pdf
           cp registro-emulador/* logs/emulador/ 2>/dev/null || true
+          cp amostras-pdf/*.pdf logs/amostras-pdf/ 2>/dev/null || true
           git config user.name "acoes"
           git config user.email "acoes@local"
-          git add logs/emulador
+          git add logs/emulador logs/amostras-pdf
           git commit -m "registro do emulador (montagem ${{ github.run_number }}) [skip ci]" || exit 0
           git push || (git pull --rebase && git push) || true
 
