@@ -106,9 +106,17 @@ void main() {
   // ---- 3.1.2 ----
   test('devagar o odometro nao conta em dobro (distancia desde a ancora)', () {
     final m = nova();
-    m.andou(2, 1); // 2 m da ancora: ainda e tremida possivel
-    m.andou(4, 1); // 4 m da ancora: fecha o trecho com 4 m, nao 2 + 4
-    expect(m.distanciaKm, closeTo(0.004, 1e-9));
+    m.andou(6, 1); // 6 m da ancora: abaixo do trecho minimo (10 m), e tremida possivel
+    m.andou(12, 1); // 12 m da ancora: fecha o trecho com 12 m, nao 6 + 12
+    expect(m.distanciaKm, closeTo(0.012, 1e-9));
+  });
+
+  test('3.2.2: menos de 10 m da ancora nao entra no odometro', () {
+    final m = nova();
+    expect(m.andou(9.9, 1), isFalse);
+    expect(m.distanciaKm, 0);
+    expect(m.andou(10, 1), isTrue);
+    expect(m.distanciaKm, closeTo(0.010, 1e-9));
   });
 
   test('a 7,2 km/h, 300 m rodados marcam 300 m', () {

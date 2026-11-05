@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constantes.dart';
+import '../core/filtro_gps.dart';
 import '../core/medidor_corrida.dart';
 import '../core/pdf_corrida.dart' as documento;
 import '../core/tarifador.dart';
@@ -99,8 +100,16 @@ class TaximetroState extends ChangeNotifier {
   double? _velGoogleKmh;
 
 
-  /// Ancora: ponto de referencia do trecho acumulado.
-  Position? _ancora;
+  /// Filtro do ruido do GPS (3.2.2): guarda o ultimo ponto valido (a ancora)
+  /// e decide o que fazer com cada leitura. Limites no topo de filtro_gps.dart.
+  final FiltroGps _filtro = FiltroGps();
+
+  /// Cada vez que o GPS e ligado ou desligado, a geracao muda: leitura que
+  /// chegue de um ouvinte antigo e ignorada. Um ouvinte por corrida.
+  int _geracaoGps = 0;
+
+  /// Os testes trocam o GPS de verdade por um fluxo simulado.
+  Stream<Position> Function(LocationSettings)? _fluxoGpsDeTeste;
 
   bool get emHorarioNoturno => config.emHorarioNoturno;
   double get bandeiradaAtual => corridaAtiva ? _medidor.bandeirada : config.bandeiradaAtual;
@@ -193,7 +202,7 @@ class TaximetroState extends ChangeNotifier {
     _ultimoInstanteMs = agora;
     _ultimoGpsMs = agora;
     _modoEspera = true;
-    _ancora = null;
+    _filtro.reiniciar();
     avisoCorridaRecuperada = null;
     _latAntesDeFechar = null;
     _pausadaParaPagamento = false;
@@ -209,7 +218,7 @@ class TaximetroState extends ChangeNotifier {
     final ms = DateTime.now().millisecondsSinceEpoch;
     if (!agora && ms - _ultimaGravacaoMs < 3000) return;
     _ultimaGravacaoMs = ms;
-    final ancora = _ancora;
+    final ancora = _filtro.ancora;
     final dados = <String, dynamic>{
       'versao': 1,
       'salvoEmMs': ms,
@@ -257,7 +266,7 @@ class TaximetroState extends ChangeNotifier {
         _latAntesDeFechar = null;
       }
       estado.reiniciar();
-      _ancora = null;
+      _filtro.reiniciar();
       // O tempo fechado ja entrou acima; daqui em diante conta normal.
       _ultimoInstanteMs = _agoraMs();
       _ultimoGpsMs = _ultimoInstanteMs;
@@ -284,8 +293,8 @@ class TaximetroState extends ChangeNotifier {
     final lng = _lngAntesDeFechar;
     _latAntesDeFechar = null;
     if (lat == null || lng == null || _segundosSemMedir <= 0) return;
-    final metros = _haversineMetros(lat, lng, pos.latitude, pos.longitude);
-    if (metros / _segundosSemMedir <= Constantes.velocidadeImpossivelMs) {
+    final metros = Geolocator.distanceBetween(lat, lng, pos.latitude, pos.longitude);
+    if (metros / _segundosSemMedir <= velocidadeMaximaKmh / 3.6) {
       _medidor.distanciaRecuperada(metros, _segundosSemMedir);
     } else {
       _medidor.soTempo(_segundosSemMedir);
@@ -337,7 +346,8 @@ class TaximetroState extends ChangeNotifier {
     // O tempo na tela de pagamento nao e cobrado: volta a contar daqui.
     _ultimoInstanteMs = _agoraMs();
     _ultimoGpsMs = _ultimoInstanteMs;
-    _ancora = null;
+    _modoEspera = true;
+    _filtro.reiniciar();
     statusTexto = 'Corrida em andamento';
     statusClasse = 'ativo';
     ligarRelogioDaCorrida();
@@ -457,6 +467,19 @@ class TaximetroState extends ChangeNotifier {
   // Corrida
   // ==================================================================
   Future<bool> iniciarCorrida() async {
+    // Dois toques rapidos em Iniciar nao abrem duas corridas nem dois GPS.
+    if (corridaAtiva || _iniciandoCorrida) return false;
+    _iniciandoCorrida = true;
+    try {
+      return await _iniciarCorridaDeFato();
+    } finally {
+      _iniciandoCorrida = false;
+    }
+  }
+
+  bool _iniciandoCorrida = false;
+
+  Future<bool> _iniciarCorridaDeFato() async {
     final permissao = await _garantirPermissao();
     if (!permissao) {
       statusTexto = 'Permissao de localizacao negada';
@@ -520,7 +543,7 @@ class TaximetroState extends ChangeNotifier {
     estado.reiniciar();
     _medidor = MedidorCorrida(_tarifadorDaConfig());
     _ultimoInstanteMs = null;
-    _ancora = null;
+    _filtro.reiniciar();
     avisoCorridaRecuperada = null;
     _zerarVelocimetro();
     statusTexto = 'Corrida finalizada';
@@ -547,16 +570,19 @@ class TaximetroState extends ChangeNotifier {
         permissao == LocationPermission.always;
   }
 
+  /// Liga o GPS da corrida. Um ouvinte so: o anterior (se houver) e
+  /// desligado, e a troca e feita sem esperar nada no meio, para dois
+  /// chamados seguidos nunca deixarem dois ouvintes ligados (3.2.2).
   Future<void> _iniciarRastreamento() async {
-    await _pararRastreamento();
-
     // Servico em primeiro plano: com a tela apagada o Android corta o GPS
     // de aplicativo comum e o medidor congelava — "travava e depois pulava".
     // Com o aviso fixo e a trava de processador ele segue medindo.
+    // Uma leitura por segundo e distanceFilter 0: o tempo de espera depende
+    // dela. O filtro de distancia fica no calculo (filtro_gps.dart).
     final LocationSettings settings = Platform.isAndroid
         ? AndroidSettings(
             accuracy: LocationAccuracy.bestForNavigation,
-            distanceFilter: 0,
+            distanceFilter: filtroDistanciaDoFluxoM,
             intervalDuration: const Duration(seconds: 1),
             foregroundNotificationConfig: const ForegroundNotificationConfig(
               notificationTitle: 'Taxímetro medindo a corrida',
@@ -565,29 +591,52 @@ class TaximetroState extends ChangeNotifier {
               setOngoing: true,
             ),
           )
-        : const LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: 0);
+        : const LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: filtroDistanciaDoFluxoM);
 
-    _posicaoSub = Geolocator.getPositionStream(locationSettings: settings).listen(
+    final antigaPosicao = _posicaoSub;
+    final antigoVelocimetro = _velocimetroSub;
+    _velocimetroSub = null;
+    final geracao = ++_geracaoGps;
+    final fluxo = _fluxoGpsDeTeste?.call(settings) ?? Geolocator.getPositionStream(locationSettings: settings);
+    _posicaoSub = fluxo.listen(
       (posicao) {
+        // Leitura de um ouvinte que ja foi trocado: ignora.
+        if (geracao != _geracaoGps) return;
         try {
           _medirPosicao(posicao);
         } catch (erro) {
           avisarFalhaNoGps(erro);
         }
       },
-      onError: (Object erro) => avisarFalhaNoGps(erro),
+      onError: (Object erro) {
+        if (geracao == _geracaoGps) avisarFalhaNoGps(erro);
+      },
     );
-    _ligarVelocimetroDireto();
+    if (_fluxoGpsDeTeste == null) _ligarVelocimetroDireto();
+    await antigaPosicao?.cancel();
+    await antigoVelocimetro?.cancel();
   }
 
   Future<void> _pararRastreamento() async {
-    await _posicaoSub?.cancel();
+    _geracaoGps++;
+    final posicao = _posicaoSub;
+    final velocimetro = _velocimetroSub;
     _posicaoSub = null;
-    await _velocimetroSub?.cancel();
     _velocimetroSub = null;
     _velDiretoKmh = null;
     _velDiretoEmMs = null;
+    await posicao?.cancel();
+    await velocimetro?.cancel();
   }
+
+  @visibleForTesting
+  set fluxoGpsParaTeste(Stream<Position> Function(LocationSettings) fluxo) => _fluxoGpsDeTeste = fluxo;
+
+  @visibleForTesting
+  Future<void> iniciarRastreamentoParaTeste() => _iniciarRastreamento();
+
+  @visibleForTesting
+  Future<void> pararRastreamentoParaTeste() => _pararRastreamento();
 
   void avisarFalhaNoGps(Object erro) {
     avisoGps = 'Deu problema ao ler a localizacao: '
@@ -650,91 +699,76 @@ class TaximetroState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (pos.accuracy > Constantes.precisaoMaximaM) {
-      _contarTempoApenas();
-      notifyListeners();
-      return;
-    }
-    final anterior = _ancora;
-    if (anterior == null) {
-      // Primeira leitura: o tempo desde o Iniciar conta como espera (antes
-      // ele era apagado aqui).
-      final agora = _agoraMs();
-      final esperou = _tempoDesdeAUltimaContagem(agora);
-      if (esperou != null) _medidor.parou(esperou);
-      _ultimoGpsMs = agora;
-      _modoEspera = true;
-      _ancora = pos;
-      _recuperarDistanciaDoTempoFechado(pos);
-      _recalcular();
-      statusTexto = 'Corrida em andamento';
-      statusClasse = 'ativo';
-      notifyListeners();
-      return;
-    }
-    final metros = _haversineMetros(
-      anterior.latitude,
-      anterior.longitude,
-      pos.latitude,
-      pos.longitude,
-    );
     final agoraMs = _agoraMs();
-    final segundos = _tempoDesdeAUltimaContagem(agoraMs);
-    _ultimoGpsMs = agoraMs;
-    if (segundos != null && segundos > 0) {
-      final velocidadeMs = metros / segundos;
-      if (velocidadeMs > Constantes.velocidadeImpossivelMs) {
-        // Salto do GPS: descarta a distancia, mas o tempo passou de verdade.
-        _ancora = pos;
-        _medidor.soTempo(segundos);
+    final avaliacao = _filtro.avaliar(pos, agoraMs);
+    switch (avaliacao.tipo) {
+      case TipoLeitura.descartada:
+        {
+          // Leitura ruim (imprecisa, antiga, a primeira, salto): como se nao
+          // tivesse chegado. Nao mexe na ancora nem no tempo; se o GPS ficar
+          // mudo, o relogio da corrida cuida do tempo.
+          return;
+        }
+
+      case TipoLeitura.reancorada:
+        {
+          // Varios saltos seguidos: a ancora antiga era ruim. Recomeca o trecho
+          // aqui, sem somar distancia (o tempo do trecho aberto fica).
+          _medidor.descartarTremida();
+          return;
+        }
+
+      case TipoLeitura.ancorada:
+        {
+          // Primeira leitura valida: o tempo desde o Iniciar conta como espera.
+          final esperou = _tempoDesdeAUltimaContagem(agoraMs);
+          if (esperou != null) _medidor.parou(esperou);
+          _ultimoGpsMs = agoraMs;
+          _modoEspera = true;
+          _recuperarDistanciaDoTempoFechado(pos);
+          _recalcular();
+          statusTexto = 'Corrida em andamento';
+          statusClasse = 'ativo';
+          notifyListeners();
+          return;
+        }
+
+      case TipoLeitura.parado:
+        {
+          final segundos = _tempoDesdeAUltimaContagem(agoraMs);
+          _ultimoGpsMs = agoraMs;
+          if (segundos != null) {
+            _medidor.parou(segundos);
+          } else {
+            _medidor.descartarTremida();
+        }
+        _modoEspera = true;
+        _filtro.ancorar(pos);
+        _recalcular();
+        statusTexto = 'Parado - cobrando espera';
+        statusClasse = 'espera';
+        notifyListeners();
+        return;
+        }
+
+      case TipoLeitura.andando:
+        {
+          final segundos = _tempoDesdeAUltimaContagem(agoraMs);
+          _ultimoGpsMs = agoraMs;
+          _modoEspera = false;
+          // [metros] e a distancia DESDE A ANCORA: enquanto o trecho nao fecha
+          // (menos de filtroDistanciaM), a ancora fica parada e essa distancia
+          // ja e o total do trecho.
+          if (_medidor.andou(avaliacao.metros, segundos ?? 0)) {
+            _filtro.ancorar(pos);
+            statusTexto = 'Corrida em andamento';
+            statusClasse = 'ativo';
+        }
         _recalcular();
         notifyListeners();
         return;
-      }
+        }
     }
-    final velocidadeKmh = pos.speed >= 0 ? pos.speed * 3.6 : null;
-    final parado = velocidadeKmh != null
-        ? velocidadeKmh < Constantes.velocidadeParadoKmh
-        : metros < Constantes.distanciaMinimaRuidoM;
-    if (parado) {
-      if (segundos != null) {
-        _medidor.parou(segundos);
-      } else {
-        _medidor.descartarTremida();
-      }
-      _modoEspera = true;
-      _recalcular();
-      _ancora = pos;
-      statusTexto = 'Parado - cobrando espera';
-      statusClasse = 'espera';
-      notifyListeners();
-      return;
-    }
-    // [metros] e a distancia DESDE A ANCORA: enquanto o trecho nao fecha, a
-    // ancora fica parada e essa distancia ja e o total do trecho (3.1.2:
-    // antes ela era somada de novo a cada leitura e o odometro contava a
-    // mais andando devagar).
-    _modoEspera = false;
-    if (_medidor.andou(metros, segundos ?? 0)) {
-      _ancora = pos;
-      statusTexto = 'Corrida em andamento';
-      statusClasse = 'ativo';
-    } else {
-      // Ainda nao deu distancia confiavel: mantem a ancora anterior.
-      _ancora = anterior;
-    }
-    _recalcular();
-    notifyListeners();
-  }
-
-  void _contarTempoApenas() {
-    final agoraMs = _agoraMs();
-    final segundos = _tempoDesdeAUltimaContagem(agoraMs);
-    _ultimoGpsMs = agoraMs;
-    _modoEspera = true;
-    if (segundos == null) return;
-    _medidor.semGps(segundos);
-    _recalcular();
   }
 
   /// Tempo desde a ultima contagem, com teto para buracos longos.
@@ -780,9 +814,23 @@ class TaximetroState extends ChangeNotifier {
     if (gpsMudo) {
       final segundos = _tempoDesdeAUltimaContagem(agoraMs);
       if (segundos != null) {
-        // Sem GPS recente: o tempo conta como espera (carro parado).
-        _medidor.parou(segundos);
-        _modoEspera = true;
+        if (_modoEspera) {
+          // Sem GPS recente com o carro parado: o tempo conta como espera.
+          _medidor.parou(segundos);
+        } else {
+          // Sem GPS recente com o carro andando (leituras descartadas): o
+          // tempo fica no trecho aberto, e a proxima leitura boa decide
+          // distancia OU tempo. Antes ele virava espera e a distancia era
+          // cobrada de novo depois.
+          _medidor.tempoDoTrechoAberto(segundos);
+          if (ultimoGps == null || agoraMs - ultimoGps >= Constantes.silencioViraEsperaMs) {
+            // GPS mudo por muito tempo: fecha o trecho como espera (a parte
+            // sem distancia confiavel continua medida a partir da ancora).
+            _medidor.descartarTremida();
+            _medidor.fecharTrecho();
+            _modoEspera = true;
+          }
+        }
         _recalcular();
         _mostrarVelocidade();
         notifyListeners();
@@ -878,17 +926,6 @@ class TaximetroState extends ChangeNotifier {
   // ==================================================================
   // Utilidades
   // ==================================================================
-  static double _haversineMetros(double lat1, double lon1, double lat2, double lon2) {
-    const r = 6371000.0;
-    double toRad(double g) => g * math.pi / 180;
-    final dLat = toRad(lat2 - lat1);
-    final dLon = toRad(lon2 - lon1);
-    final a = math.pow(math.sin(dLat / 2), 2) +
-        math.cos(toRad(lat1)) * math.cos(toRad(lat2)) * math.pow(math.sin(dLon / 2), 2);
-    final c = 2 * math.atan2(math.sqrt(a.toDouble()), math.sqrt(1 - a));
-    return r * c;
-  }
-
   /// Aviso de validade da CNH (mesma regra do original).
   String? avisoValidadeCnh() {
     if (config.cnhValidade.trim().isEmpty) return null;

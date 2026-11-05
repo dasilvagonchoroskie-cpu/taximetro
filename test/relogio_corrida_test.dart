@@ -18,10 +18,14 @@ void main() {
   const lng0 = -49.35;
   double grausDeLatitude(double metros) => metros / 6371000.0 * 180 / math.pi;
 
+  late int agora;
+
+  /// Leitura do GPS "agora" (3.2.2: o filtro descarta leitura repetida ou
+  /// com a hora velha, entao cada leitura leva a hora do relogio de teste).
   Position ponto(double metrosAoNorte, {double velocidadeMs = 0}) => Position(
         latitude: lat0 + grausDeLatitude(metrosAoNorte),
         longitude: lng0,
-        timestamp: DateTime(2026, 10, 1),
+        timestamp: DateTime.fromMillisecondsSinceEpoch(agora),
         accuracy: 5,
         altitude: 0,
         altitudeAccuracy: 0,
@@ -31,7 +35,6 @@ void main() {
         speedAccuracy: 0,
       );
 
-  late int agora;
   late int inicio;
   late TaximetroState s;
 
@@ -85,16 +88,23 @@ void main() {
     expect(s.medidorParaTeste.paradoS, closeTo(passou, 1e-9));
   });
 
-  test('o primeiro GPS nao apaga o tempo do comeco da corrida', () {
+  test('o primeiro GPS (descartado em 3.2.2) nao apaga o tempo do comeco da corrida', () {
     comecar();
     avancar(2000);
-    s.medirPosicaoParaTeste(ponto(0));
-    expect(s.medidorParaTeste.totalS, closeTo(2.0, 1e-9));
+    s.medirPosicaoParaTeste(ponto(0)); // a primeira posicao e descartada
     expect(s.estado.tempoTotalS, 2);
+    avancar(1000);
+    s.medirPosicaoParaTeste(ponto(0)); // a segunda vira a referencia
+    expect(s.medidorParaTeste.totalS, closeTo(3.0, 1e-9));
+    expect(s.estado.tempoTotalS, 3);
   });
 
   test('andando a 7,2 km/h, 300 m marcam 300 m (antes marcava 450 m)', () {
     comecar();
+    // Carro parado no embarque: a primeira posicao e descartada e a segunda
+    // vira a referencia.
+    s.medirPosicaoParaTeste(ponto(0));
+    avancar(1000);
     s.medirPosicaoParaTeste(ponto(0));
     var metros = 0.0;
     for (var i = 0; i < 150; i++) {
@@ -104,7 +114,7 @@ void main() {
     }
     final r = s.montarRegistroParaTeste();
     expect(r.distanciaKm, closeTo(0.300, 0.001));
-    expect(r.tempoS, 150);
+    expect(r.tempoS, 151);
   });
 
   test('Finalizar conta ate o toque, e a tela de pagamento nao conta', () async {

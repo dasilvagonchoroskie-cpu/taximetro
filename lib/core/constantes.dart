@@ -2,21 +2,15 @@
 class Constantes {
   const Constantes._();
 
-  // ---- Filtros de GPS (mesmos valores do original) ----
-  /// Distancia minima (m) para considerar movimento real, nao ruido.
-  static const double distanciaMinimaRuidoM = 3;
-
-  /// Abaixo desta velocidade o carro esta parado de verdade.
+  // ---- GPS ----
+  // Os limites do filtro de ruido (precisao, velocidade minima, salto,
+  // trecho minimo) ficam no topo de lib/core/filtro_gps.dart (3.2.2).
+  /// Velocimetro da TELA: abaixo disto mostra 0 (so a tela; o filtro da
+  /// distancia usa velocidadeMinimaMs, de filtro_gps.dart).
   static const double velocidadeParadoKmh = 2.5;
 
   /// Distancia (m) para valer como "saiu do lugar" e encerrar a franquia.
   static const double distanciaSaiuDoLugarM = 50;
-
-  /// Velocidade impossivel num carro (~200 km/h): descarta o trecho.
-  static const double velocidadeImpossivelMs = 55;
-
-  /// Leitura com margem de erro pior que esta nao mede distancia.
-  static const double precisaoMaximaM = 30;
 
   /// Valvula de seguranca quando o aparelho nao informa velocidade.
   static const double fugaDaAncoraM = 150;
@@ -30,6 +24,11 @@ class Constantes {
 
   /// Se o GPS contou ha menos que isto, deixa o tempo com ele (ms).
   static const int janelaGpsRecenteMs = 2500;
+
+  /// GPS mudo com o carro andando por mais que isto: o trecho aberto fecha
+  /// como espera (ms). Antes disso o tempo fica no trecho, para a proxima
+  /// leitura boa decidir distancia OU tempo.
+  static const int silencioViraEsperaMs = 30000;
 
   /// Intervalo minimo entre atualizacoes da notificacao (ms).
   static const int intervaloNotificacaoMs = 1000;

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'constantes.dart';
+import 'filtro_gps.dart' show filtroDistanciaM;
 import 'tarifador.dart';
 
 /// A contagem da corrida, sem GPS, sem tela e sem Android: so a conta.
@@ -49,7 +50,8 @@ class MedidorCorrida {
     bufferDistanciaM = metrosDesdeAncora;
     bufferTempoS += segundos;
     totalS += segundos;
-    if (bufferDistanciaM >= Constantes.distanciaMinimaRuidoM) {
+    // Trecho minimo (3.2.2: 10 m, era 3 m): abaixo disso e tremida do GPS.
+    if (bufferDistanciaM >= filtroDistanciaM) {
       fecharTrecho();
       return true;
     }

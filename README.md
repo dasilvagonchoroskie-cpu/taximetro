@@ -14,6 +14,18 @@ está guardada na etiqueta `capacitor-2.4-final`.
 - A bandeirada fica congelada no início da corrida.
 - A regra fica em `lib/core/tarifador.dart`, com testes em `test/`.
 
+## Filtro do ruido do GPS (versao 3.2.2, 05/11/2026)
+- `lib/core/filtro_gps.dart`, com os limites no topo: precisao maxima 20 m,
+  velocidade minima 0,5 m/s, salto acima de 200 km/h, trecho minimo 10 m,
+  leitura com mais de 10 s de atraso (cache), primeira posicao descartada.
+- Distancia de cada trecho em metros com `Geolocator.distanceBetween`,
+  medida do ultimo ponto valido (ancora); leitura descartada nao mexe nela.
+- O fluxo do GPS continua com uma leitura por segundo (`distanceFilter` 0):
+  o tempo de espera depende dela. O "distanceFilter" de 10 m e aplicado no
+  calculo do trecho.
+- Testes: `test/filtro_gps_test.dart` (item por item) e
+  `test/gps_ruido_test.dart` (corridas simuladas com ruido, pelo app inteiro).
+
 ## Como sai o APK
 A cada envio para `main`, a esteira (GitHub Actions) faz análise do código,
 roda os testes da cobrança e gera o APK assinado com a **mesma chave da
