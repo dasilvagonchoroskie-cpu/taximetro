@@ -1,5 +1,12 @@
 # Taxímetro — Fortaleza Digital Security
 
+**Desde a versão 3.3.0 (05/11/2026) o app se chama Prime Driver**, com ícone
+novo. O pacote Android (`br.com.fortalezadigitalsecurity.taximetro`), a chave
+de assinatura, o apelido da licença (`taximetro`) e o nome do arquivo do release
+(`taximetro.apk`) continuam os mesmos: instala por cima, sem perder licença nem
+histórico. Nome e versão ficam em `lib/core/marca.dart`.
+
+
 Taxímetro por GPS que calcula a corrida por **distância e tempo** e funciona
 **sem internet**. Só abre no celular liberado pela **Central de Licenças**.
 

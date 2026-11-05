@@ -4,10 +4,8 @@ import 'package:provider/provider.dart';
 
 import 'app.dart';
 import 'core/constantes.dart';
+import 'core/marca.dart';
 import 'state/taximetro_state.dart';
-
-/// Versao que aparece na Central ao lado da licenca deste aparelho.
-const versaoTaximetro = '3.2.0';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,8 +13,9 @@ void main() {
   // taximetro 3.1 continuar liberado, sem perceber a troca.
   final licenca = ControleLicenca(const ConfiguracaoLicenca(
     appId: 'taximetro',
-    nomeApp: 'Taxímetro',
-    versaoApp: versaoTaximetro,
+    nomeApp: nomeDoApp,
+    // Versao que aparece na Central ao lado da licenca deste aparelho.
+    versaoApp: versaoDoApp,
     prefixoLegado: Constantes.chaveLicenca,
   ));
   runApp(

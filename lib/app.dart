@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fortaleza_licenca/fortaleza_licenca.dart';
 import 'package:provider/provider.dart';
 
+import 'core/marca.dart';
 import 'screens/autorizacoes_screen.dart';
 import 'screens/medidor_screen.dart';
 import 'state/taximetro_state.dart';
@@ -16,7 +17,7 @@ class TaxiApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final aparencia = context.watch<TaximetroState>().aparencia;
     return MaterialApp(
-      title: 'Taximetro',
+      title: nomeDoApp,
       debugShowCheckedModeBanner: false,
       theme: temaDoApp(aparencia),
       home: _Raiz(licenca: licenca),
@@ -43,7 +44,7 @@ class _Raiz extends StatelessWidget {
     // portao mostra a tela de pedir liberacao (sem chave) ou a chave.
     return PortaoLicenca(
       controle: licenca,
-      icone: Icons.local_taxi,
+      icone: Icons.directions_car,
       child: const AutorizacoesScreen(child: MedidorScreen()),
     );
   }

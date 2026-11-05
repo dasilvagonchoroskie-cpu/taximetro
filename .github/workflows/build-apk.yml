@@ -173,8 +173,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-mais-recente
-          name: Taximetro - versao mais recente
-          body: Taximetro em Flutter (versao 3). Assinado com a mesma chave da versao anterior, instala por cima e a licenca continua valendo. Aberto no celular virtual antes de publicar.
+          name: Prime Driver (antigo Taximetro) - versao mais recente
+          body: Prime Driver, o antigo Taximetro (o arquivo continua taximetro.apk, link da Central). Assinado com a mesma chave da versao anterior, instala por cima e a licenca continua valendo. Aberto no celular virtual antes de publicar.
           files: saida/taximetro.apk
           prerelease: true
         env:

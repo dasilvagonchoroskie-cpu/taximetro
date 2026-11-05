@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constantes.dart';
 import '../core/filtro_gps.dart';
+import '../core/marca.dart';
 import '../core/medidor_corrida.dart';
 import '../core/pdf_corrida.dart' as documento;
 import '../core/tarifador.dart';
@@ -585,10 +586,13 @@ class TaximetroState extends ChangeNotifier {
             distanceFilter: filtroDistanciaDoFluxoM,
             intervalDuration: const Duration(seconds: 1),
             foregroundNotificationConfig: const ForegroundNotificationConfig(
-              notificationTitle: 'Taxímetro medindo a corrida',
+              notificationTitle: '$nomeDoApp medindo a corrida',
               notificationText: 'A cobrança continua mesmo com a tela apagada.',
               enableWakeLock: true,
               setOngoing: true,
+              // Coroa branca propria para a barra de status. O icone do app
+              // (adaptativo) derruba o aviso no Android 8.0.
+              notificationIcon: AndroidResource(name: 'ic_notificacao', defType: 'drawable'),
             ),
           )
         : const LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: filtroDistanciaDoFluxoM);

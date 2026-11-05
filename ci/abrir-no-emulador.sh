@@ -25,6 +25,14 @@ for vez in 1 2; do
     FALHOU=1
   fi
 done
+# Foto da gaveta de aplicativos: confere o icone e o nome instalados.
+TAM=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
+LARG=${TAM%x*}; ALT=${TAM#*x}
+adb shell input keyevent KEYCODE_HOME || true
+sleep 3
+adb shell input swipe $((LARG / 2)) $((ALT * 85 / 100)) $((LARG / 2)) $((ALT * 20 / 100)) 400 || true
+sleep 4
+adb exec-out screencap -p > "$OUT/icone-na-gaveta.png" || true
 adb logcat -d -b crash -v time > "$OUT/crash.txt" 2>/dev/null || true
 echo "resultado: $([ $FALHOU = 0 ] && echo OK || echo FALHOU)" | tee -a "$OUT/resumo.txt"
 exit $FALHOU

@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../models/config.dart';
 import '../models/registro_corrida.dart';
 import 'formato.dart';
+import 'marca.dart';
 
 /// PDFs do taximetro (versao 3.2.1):
 ///
@@ -306,8 +307,8 @@ Future<List<int>> pdfComprovante(
 
   final doc = pw.Document(
     title: 'Comprovante de corrida ${numeroComprovante(r)}',
-    author: textoPdf(prestador.nome.isEmpty ? 'Taximetro' : prestador.nome),
-    creator: 'Taximetro - Fortaleza Digital Security',
+    author: textoPdf(prestador.nome.isEmpty ? nomeDoApp : prestador.nome),
+    creator: '$nomeDoApp - Fortaleza Digital Security',
   );
 
   doc.addPage(
@@ -410,7 +411,7 @@ Future<List<int>> pdfComprovante(
           pw.Spacer(),
           _divisor(),
           pw.Text(
-            'Comprovante emitido pelo aplicativo Taxímetro em ${dataCurta(emissao)} às ${hora(emissao)}. '
+            'Comprovante emitido pelo aplicativo $nomeDoApp em ${dataCurta(emissao)} às ${hora(emissao)}. '
             'Não substitui documento fiscal.',
             style: _t(7.5, cor: _claro),
             textAlign: pw.TextAlign.center,
@@ -439,8 +440,8 @@ Future<List<int>> pdfRelatorio(
 
   final doc = pw.Document(
     title: textoPdf('Relatório de corridas - $periodo'),
-    author: textoPdf(prestador.nome.isEmpty ? 'Taximetro' : prestador.nome),
-    creator: 'Taximetro - Fortaleza Digital Security',
+    author: textoPdf(prestador.nome.isEmpty ? nomeDoApp : prestador.nome),
+    creator: '$nomeDoApp - Fortaleza Digital Security',
   );
 
   pw.Widget numero(String rotulo, String valor, {bool destaque = false}) => pw.Expanded(
@@ -503,7 +504,7 @@ Future<List<int>> pdfRelatorio(
           children: [
             pw.Expanded(
               child: pw.Text(
-                'Taxímetro - emitido em ${dataCurta(emissao)} às ${hora(emissao)}. Não substitui documento fiscal.',
+                '$nomeDoApp - emitido em ${dataCurta(emissao)} às ${hora(emissao)}. Não substitui documento fiscal.',
                 style: _t(7.5, cor: _claro),
               ),
             ),

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/formato.dart';
+import '../core/marca.dart';
 import '../models/aparencia.dart';
 import '../state/taximetro_state.dart';
 import '../widgets/ui.dart';
@@ -25,7 +26,7 @@ class MedidorScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Taximetro'),
+        title: const Text(nomeDoApp),
         actions: [
           if (s.emHorarioNoturno)
             const Padding(
