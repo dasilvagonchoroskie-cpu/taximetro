@@ -31,7 +31,7 @@ class MedidorScreen extends StatelessWidget {
           if (s.emHorarioNoturno)
             const Padding(
               padding: EdgeInsets.only(right: 8),
-              child: Center(child: Selo(texto: 'BANDEIRA 2')),
+              child: Center(child: Selo(texto: 'TARIFA NOTURNA')),
             ),
           IconButton(
             tooltip: 'Historico',
@@ -221,7 +221,7 @@ class MedidorScreen extends StatelessWidget {
                 titulo: 'DETALHES',
                 child: Column(
                   children: [
-                    _Linha(rotulo: 'Bandeirada', valor: Formato.moedaComPrefixo(s.bandeiradaAtual)),
+                    _Linha(rotulo: 'Tarifa inicial', valor: Formato.moedaComPrefixo(s.bandeiradaAtual)),
                     _Linha(
                       rotulo: 'Distancia cobrada',
                       valor: '${Formato.km(s.kmCobrados)} km',

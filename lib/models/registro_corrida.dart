@@ -65,7 +65,8 @@ class RegistroCorrida {
   /// Detalhamento da conta (mesma composicao do original).
   String get detalhamento {
     final kmCobrados = (distanciaKm - kmIncluidoUsado) < 0 ? 0.0 : distanciaKm - kmIncluidoUsado;
-    final partes = <String>['bandeirada R\$ ${_m(bandeirada)}'];
+    // Motorista particular, nao taxi (3.3.1): "tarifa inicial", nao "bandeirada".
+    final partes = <String>['tarifa inicial R\$ ${_m(bandeirada)}'];
 
     if (valorDistancia > 0) {
       partes.add('${kmCobrados.toStringAsFixed(2).replaceAll('.', ',')} km R\$ ${_m(valorDistancia)}');

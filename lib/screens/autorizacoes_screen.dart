@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../core/marca.dart';
 import '../widgets/ui.dart';
 
 /// Verificacao de permissoes na abertura (tela-autorizacoes do original).
@@ -70,7 +71,7 @@ class _AutorizacoesScreenState extends State<AutorizacoesScreen> {
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   Text(
-                    'O taximetro precisa da localizacao para medir distancia e tempo da corrida.',
+                    'O $nomeDoApp precisa da localização para medir a distância e o tempo da corrida.',
                     style: TextStyle(fontSize: 14, color: t.colorScheme.onSurface.withValues(alpha: 0.7)),
                   ),
                   const SizedBox(height: 20),
@@ -93,7 +94,7 @@ class _AutorizacoesScreenState extends State<AutorizacoesScreen> {
                                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                               const SizedBox(height: 2),
                               Text(
-                                'Obrigatoria. Sem ela o taximetro nao mede a corrida.',
+                                'Obrigatória. Sem ela o $nomeDoApp não mede a corrida.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: t.colorScheme.onSurface.withValues(alpha: 0.65),

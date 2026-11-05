@@ -189,9 +189,10 @@ List<LinhaConta>? composicaoDoValor(RegistroCorrida r) {
   if (r.bandeirada <= 0) return null;
   if ((c(r.bandeirada) + c(r.valorDistancia) + c(r.valorEspera) - c(r.valor)).abs() > 1) return null;
   return [
-    LinhaConta('Bandeirada', 'abertura da corrida', r.bandeirada),
-    LinhaConta('Distância', r.valorDistancia > 0 ? 'além da bandeirada' : 'dentro da bandeirada', r.valorDistancia),
-    LinhaConta('Tempo parado', r.valorEspera > 0 ? 'além da bandeirada' : 'dentro da bandeirada', r.valorEspera),
+    // Motorista particular, nao taxi (3.3.1): "tarifa inicial", nao "bandeirada".
+    LinhaConta('Tarifa inicial', 'abertura da corrida', r.bandeirada),
+    LinhaConta('Distância', r.valorDistancia > 0 ? 'além da tarifa inicial' : 'dentro da tarifa inicial', r.valorDistancia),
+    LinhaConta('Tempo parado', r.valorEspera > 0 ? 'além da tarifa inicial' : 'dentro da tarifa inicial', r.valorEspera),
   ];
 }
 
@@ -328,7 +329,7 @@ Future<List<int>> pdfComprovante(
                   children: [
                     pw.Text('COMPROVANTE DE CORRIDA', style: _t(13, negrito: true, espaco: 0.5)),
                     pw.SizedBox(height: 2),
-                    pw.Text('Transporte de passageiro - táxi', style: _t(8.5, cor: _medio)),
+                    pw.Text('Transporte particular de passageiro', style: _t(8.5, cor: _medio)),
                   ],
                 ),
               ),

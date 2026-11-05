@@ -11,4 +11,4 @@ library;
 const String nomeDoApp = 'Prime Driver';
 
 /// Tem que ser igual a versao do pubspec.yaml (um teste confere).
-const String versaoDoApp = '3.3.0';
+const String versaoDoApp = '3.3.1';

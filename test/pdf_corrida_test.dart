@@ -80,7 +80,12 @@ void main() {
   test('composicao do valor fecha com o total', () {
     final r = corrida(data: DateTime(2026, 10, 22, 18, 40), valorDistancia: 8.10, valorEspera: 1.65);
     final linhas = composicaoDoValor(r)!;
-    expect(linhas.map((l) => l.descricao), ['Bandeirada', 'Distância', 'Tempo parado']);
+    expect(linhas.map((l) => l.descricao), ['Tarifa inicial', 'Distância', 'Tempo parado']);
+    // Motorista particular: nada de "bandeirada" nem "taxi" no que o passageiro le.
+    for (final l in linhas) {
+      expect('${l.descricao} ${l.detalhe}'.toLowerCase(), isNot(contains('bandeir')));
+    }
+    expect(r.detalhamento, startsWith('tarifa inicial R\$ 10,00'));
     final soma = linhas.fold<int>(0, (t, l) => t + (l.valor * 100).round());
     expect(soma, (r.valor * 100).round());
   });

@@ -126,12 +126,12 @@ class _ConfigScreenState extends State<ConfigScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Painel(
-                titulo: 'BANDEIRADA',
+                titulo: 'TARIFA INICIAL',
                 child: Column(
                   children: [
-                    CampoApp(label: 'Bandeirada dia (R\$)', controller: _dia, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {})),
+                    CampoApp(label: 'Tarifa inicial dia (R\$)', controller: _dia, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {})),
                     const SizedBox(height: 12),
-                    CampoApp(label: 'Bandeirada noite (R\$)', controller: _noite, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {})),
+                    CampoApp(label: 'Tarifa inicial noite (R\$)', controller: _noite, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {})),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -147,7 +147,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Fora dessas horas vale a bandeirada do dia.',
+                            'Fora dessas horas vale a tarifa inicial do dia.',
                             style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.6)),
                           ),
                         ),
@@ -161,7 +161,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                 titulo: 'FRANQUIA',
                 child: Row(
                   children: [
-                    Expanded(child: CampoApp(label: 'Km incl. na bandeirada', controller: _kmInc, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}))),
+                    Expanded(child: CampoApp(label: 'Km incl. na tarifa inicial', controller: _kmInc, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}))),
                     const SizedBox(width: 12),
                     Expanded(child: CampoApp(label: 'Minutos incl. parado', controller: _minInc, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}))),
                   ],
