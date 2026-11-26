@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/aparencia.dart';
 
@@ -78,6 +79,8 @@ class CampoApp extends StatelessWidget {
     this.maxLength,
     this.prefixIcon,
     this.suffix,
+    this.inputFormatters,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final String? label;
@@ -90,6 +93,8 @@ class CampoApp extends StatelessWidget {
   final int? maxLength;
   final IconData? prefixIcon;
   final Widget? suffix;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +119,8 @@ class CampoApp extends StatelessWidget {
           keyboardType: keyboardType,
           onChanged: onChanged,
           maxLength: maxLength,
+          inputFormatters: inputFormatters,
+          textCapitalization: textCapitalization,
           style: TextStyle(fontSize: 16, color: t.colorScheme.onSurface),
           decoration: InputDecoration(
             hintText: hint,

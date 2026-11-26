@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/cnpj.dart';
 import '../state/taximetro_state.dart';
 import '../widgets/ui.dart';
 
@@ -14,6 +15,9 @@ class MotoristaScreen extends StatefulWidget {
 
 class _MotoristaScreenState extends State<MotoristaScreen> {
   late final Map<String, TextEditingController> _campos;
+  String? _erroCnpj;
+
+  static const String _cnpjInvalido = 'CNPJ incompleto ou inválido. Confira o número.';
 
   @override
   void initState() {
@@ -21,6 +25,8 @@ class _MotoristaScreenState extends State<MotoristaScreen> {
     final c = context.read<TaximetroState>().config;
     _campos = {
       'motoristaNome': TextEditingController(text: c.motoristaNome),
+      'empresaNome': TextEditingController(text: c.empresaNome),
+      'empresaCnpj': TextEditingController(text: c.empresaCnpj),
       'motoristaCnh': TextEditingController(text: c.motoristaCnh),
       'cnhCategoria': TextEditingController(text: c.cnhCategoria),
       'cnhValidade': TextEditingController(text: c.cnhValidade),
@@ -41,8 +47,20 @@ class _MotoristaScreenState extends State<MotoristaScreen> {
   }
 
   Future<void> _salvar() async {
+    final cnpj = _campos['empresaCnpj']!.text.trim();
+    // CNPJ errado nao pode ir parar no comprovante do passageiro.
+    if (cnpj.isNotEmpty && !cnpjValido(cnpj)) {
+      setState(() => _erroCnpj = _cnpjInvalido);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não salvei: confira o CNPJ ou deixe o campo em branco.')),
+      );
+      return;
+    }
+
     final s = context.read<TaximetroState>();
     final c = s.config;
+    c.empresaNome = _campos['empresaNome']!.text.trim();
+    c.empresaCnpj = formatarCnpj(cnpj);
     c.motoristaNome = _campos['motoristaNome']!.text.trim();
     c.motoristaCnh = _campos['motoristaCnh']!.text.trim();
     c.cnhCategoria = _campos['cnhCategoria']!.text.trim();
@@ -55,6 +73,7 @@ class _MotoristaScreenState extends State<MotoristaScreen> {
 
     await s.gravarConfig();
     if (!mounted) return;
+    setState(() => _erroCnpj = null); // atualiza a previa do comprovante
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Dados salvos. Aparecem no comprovante em PDF.')),
     );
@@ -125,6 +144,38 @@ class _MotoristaScreenState extends State<MotoristaScreen> {
               ],
               const SizedBox(height: 14),
               Painel(
+                titulo: 'EMPRESA (SE TIVER)',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    CampoApp(
+                      label: 'Nome da empresa',
+                      controller: _campos['empresaNome'],
+                      maxLength: 90,
+                      textCapitalization: TextCapitalization.words,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    CampoApp(
+                      label: 'CNPJ',
+                      hint: '00.000.000/0000-00',
+                      controller: _campos['empresaCnpj'],
+                      // Teclado com numeros e letras: o CNPJ novo pode ter letra.
+                      keyboardType: TextInputType.visiblePassword,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [MascaraCnpj()],
+                      error: _erroCnpj,
+                      ajuda: 'Preencha só se tiver empresa aberta. Em branco, não sai no comprovante.',
+                      onChanged: (texto) => setState(() {
+                        // So reclama depois de digitar o numero inteiro.
+                        _erroCnpj = limparCnpj(texto).length == 14 && !cnpjValido(texto) ? _cnpjInvalido : null;
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Painel(
                 titulo: 'VEICULO',
                 child: Column(
                   children: [
@@ -154,6 +205,14 @@ class _MotoristaScreenState extends State<MotoristaScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (s.config.empresaNome.isNotEmpty)
+                      Text(s.config.empresaNome, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    if (s.config.empresaCnpj.isNotEmpty)
+                      Text(
+                        'CNPJ ${s.config.empresaCnpj}',
+                        style: TextStyle(fontSize: 13, color: t.colorScheme.onSurface.withValues(alpha: 0.7)),
+                      ),
+                    if (s.config.empresaNome.isNotEmpty || s.config.empresaCnpj.isNotEmpty) const SizedBox(height: 8),
                     Text(
                       s.config.motoristaNome.isEmpty ? 'Motorista nao informado' : s.config.motoristaNome,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
