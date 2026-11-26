@@ -1,11 +1,11 @@
 Android 14
 Success
-TotalTime: 5288
-WaitTime: 5319
+TotalTime: 3373
+WaitTime: 3394
 Complete
 abertura 1: ABERTO
-TotalTime: 3860
-WaitTime: 3906
+TotalTime: 2986
+WaitTime: 2992
 Complete
 abertura 2: ABERTO
 resultado: OK
