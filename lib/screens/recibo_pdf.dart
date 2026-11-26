@@ -77,6 +77,11 @@ class ReciboScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (s.config.empresaNome.isNotEmpty)
+                      Text(s.config.empresaNome, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    if (s.config.empresaCnpj.isNotEmpty)
+                      Text('CNPJ ${s.config.empresaCnpj}', style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.7))),
+                    if (s.config.empresaNome.isNotEmpty || s.config.empresaCnpj.isNotEmpty) const SizedBox(height: 8),
                     Text(s.config.motoristaNome.isEmpty ? 'Motorista nao informado' : s.config.motoristaNome, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('CNH ${s.config.motoristaCnh.isEmpty ? '—' : s.config.motoristaCnh} ${s.config.cnhCategoria}', style: TextStyle(fontSize: 12, color: t.colorScheme.onSurface.withValues(alpha: 0.7))),

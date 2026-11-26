@@ -173,7 +173,7 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                       itemCount: lista.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, i) => _ItemHistorico(registro: lista[i]),
                     ),
             ),

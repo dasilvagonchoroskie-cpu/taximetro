@@ -27,10 +27,12 @@ Future<bool> compartilharPdf(
     final arquivo = File('${pasta.path}/$nomeArquivo');
     await arquivo.writeAsBytes(bytes, flush: true);
     if (!context.mounted) return false;
-    await Share.shareXFiles(
-      [XFile(arquivo.path, mimeType: 'application/pdf', name: nomeArquivo)],
-      subject: assunto,
-      text: mensagem,
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(arquivo.path, mimeType: 'application/pdf', name: nomeArquivo)],
+        subject: assunto,
+        text: mensagem,
+      ),
     );
     return true;
   } catch (erro) {

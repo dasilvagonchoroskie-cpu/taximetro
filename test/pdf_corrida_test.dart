@@ -17,6 +17,8 @@ void main() {
     cnh: '00000000000 (categoria B)',
     veiculo: 'Chevrolet Spin Branca 2022',
     placa: 'ABC1D23',
+    empresa: 'João da Silva Transportes Executivos LTDA (exemplo)',
+    cnpj: '11.222.333/0001-81',
   );
   final emissao = DateTime(2026, 10, 23, 9, 30);
   final pasta = Directory('build/amostras-pdf')..createSync(recursive: true);

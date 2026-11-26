@@ -13,6 +13,17 @@ Taxímetro por GPS que calcula a corrida por **distância e tempo** e funciona
 **Versão 3.0 — Flutter (29/09/2026).** A versão antiga (Capacitor, 2.4)
 está guardada na etiqueta `capacitor-2.4-final`.
 
+## Empresa e CNPJ (versao 3.4.0, 26/11/2026)
+- Em **Motorista e veiculo** ha o quadro **Empresa (se tiver)**: nome da
+  empresa e CNPJ, os dois opcionais. Saem no comprovante, no relatorio em PDF
+  e na tela do comprovante. Em branco, nao aparecem.
+- O CNPJ e conferido pelo digito verificador, no formato so de numeros e no
+  alfanumerico da Receita (desde julho de 2026): `lib/core/cnpj.dart`.
+  CNPJ errado nao e gravado.
+- Bibliotecas e ferramentas atualizadas: Flutter 3.50.1, Gradle 9.5.0,
+  Android Gradle Plugin 9.3.1, Kotlin 2.4.20, geolocator 14, share_plus 13.
+  `intl` saiu (nao era usada).
+
 ## Regra de cobrança
 - A bandeirada (dia R$ 10,00 · noite R$ 20,00) inclui **1,5 km rodados**
   e **5 minutos de espera**, em qualquer momento da corrida.

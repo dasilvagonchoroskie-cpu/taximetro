@@ -3,6 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../models/config.dart';
 import '../models/registro_corrida.dart';
+import 'cnpj.dart';
 import 'formato.dart';
 import 'marca.dart';
 
@@ -24,7 +25,7 @@ import 'marca.dart';
 
 /// Dados de quem prestou o servico (vem da tela "Motorista").
 class DadosPrestador {
-  const DadosPrestador({this.nome = '', this.cnh = '', this.veiculo = '', this.placa = ''});
+  const DadosPrestador({this.nome = '', this.cnh = '', this.veiculo = '', this.placa = '', this.empresa = '', this.cnpj = ''});
 
   factory DadosPrestador.daConfig(ConfigTaxi c) {
     final numero = c.motoristaCnh.trim();
@@ -34,6 +35,8 @@ class DadosPrestador {
       cnh: numero.isEmpty ? '' : (categoria.isEmpty ? numero : '$numero (categoria $categoria)'),
       veiculo: c.descricaoVeiculo.trim(),
       placa: c.veiculoPlaca.trim().toUpperCase(),
+      empresa: c.empresaNome.trim(),
+      cnpj: formatarCnpj(c.empresaCnpj),
     );
   }
 
@@ -42,7 +45,11 @@ class DadosPrestador {
   final String veiculo;
   final String placa;
 
-  bool get vazio => nome.isEmpty && cnh.isEmpty && veiculo.isEmpty && placa.isEmpty;
+  /// Empresa e CNPJ (3.4.0): so quem tem empresa aberta preenche.
+  final String empresa;
+  final String cnpj;
+
+  bool get vazio => [nome, cnh, veiculo, placa, empresa, cnpj].every((v) => v.isEmpty);
 }
 
 // ===================================================================
@@ -286,6 +293,8 @@ pw.Widget _par(String rotulo, String valor, {double largura = 92, double tamanho
 pw.Widget _divisor() => pw.Container(height: 0.6, color: _linha, margin: const pw.EdgeInsets.symmetric(vertical: 8));
 
 List<pw.Widget> _blocoPrestador(DadosPrestador p, {double largura = 92}) => [
+      if (p.empresa.isNotEmpty) _par('Empresa', _corte(textoPdf(p.empresa), 90), largura: largura),
+      if (p.cnpj.isNotEmpty) _par('CNPJ', p.cnpj, largura: largura),
       if (p.nome.isNotEmpty) _par('Motorista', p.nome, largura: largura),
       if (p.cnh.isNotEmpty) _par('CNH', p.cnh, largura: largura),
       if (p.veiculo.isNotEmpty) _par('Veículo', p.veiculo, largura: largura),
@@ -295,6 +304,31 @@ List<pw.Widget> _blocoPrestador(DadosPrestador p, {double largura = 92}) => [
 // ===================================================================
 // Comprovante de UMA corrida (A5, para o passageiro)
 // ===================================================================
+
+/// O miolo ocupa o espaco acima do rodape. Se os textos forem tao compridos
+/// que nao caibam (3.4.0: empresa e CNPJ sao duas linhas a mais), ele encolhe
+/// um pouco por inteiro: nada sai cortado.
+pw.Widget _paginaDoComprovante({required List<pw.Widget> miolo, required pw.Widget rodape}) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Expanded(
+          child: pw.FittedBox(
+            fit: pw.BoxFit.scaleDown,
+            alignment: pw.Alignment.topCenter,
+            child: pw.SizedBox(
+              width: PdfPageFormat.a5.width - 60, // menos as margens de 30
+              child: pw.Column(
+                mainAxisSize: pw.MainAxisSize.min,
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: miolo,
+              ),
+            ),
+          ),
+        ),
+        _divisor(),
+        rodape,
+      ],
+    );
 
 Future<List<int>> pdfComprovante(
   RegistroCorrida r,
@@ -316,9 +350,8 @@ Future<List<int>> pdfComprovante(
     pw.Page(
       pageFormat: PdfPageFormat.a5,
       margin: const pw.EdgeInsets.fromLTRB(30, 28, 30, 24),
-      build: (contexto) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
+      build: (contexto) => _paginaDoComprovante(
+        miolo: [
           // ---- cabecalho ----
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -408,16 +441,13 @@ Future<List<int>> pdfComprovante(
             _tituloSecao('Prestador do serviço'),
             ..._blocoPrestador(prestador),
           ],
-
-          pw.Spacer(),
-          _divisor(),
-          pw.Text(
-            'Comprovante emitido pelo aplicativo $nomeDoApp em ${dataCurta(emissao)} às ${hora(emissao)}. '
-            'Não substitui documento fiscal.',
-            style: _t(7.5, cor: _claro),
-            textAlign: pw.TextAlign.center,
-          ),
         ],
+        rodape: pw.Text(
+          'Comprovante emitido pelo aplicativo $nomeDoApp em ${dataCurta(emissao)} às ${hora(emissao)}. '
+          'Não substitui documento fiscal.',
+          style: _t(7.5, cor: _claro),
+          textAlign: pw.TextAlign.center,
+        ),
       ),
     ),
   );

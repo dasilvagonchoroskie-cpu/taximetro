@@ -14,6 +14,8 @@ class ConfigTaxi {
     this.taxaEspera = ConfigPadrao.taxaEspera,
     this.limiarVelocidadeKmh = ConfigPadrao.limiarVelocidadeKmh,
     this.motoristaNome = '',
+    this.empresaNome = '',
+    this.empresaCnpj = '',
     this.motoristaCnh = '',
     this.cnhCategoria = '',
     this.cnhValidade = '',
@@ -40,6 +42,11 @@ class ConfigTaxi {
   double limiarVelocidadeKmh;
 
   String motoristaNome;
+
+  /// Empresa do motorista, se ele tiver (3.4.0). Em branco nao sai no PDF.
+  String empresaNome;
+  String empresaCnpj;
+
   String motoristaCnh;
   String cnhCategoria;
   String cnhValidade;
@@ -92,6 +99,8 @@ class ConfigTaxi {
         'taxaEspera': taxaEspera,
         'limiarVelocidadeKmh': limiarVelocidadeKmh,
         'motoristaNome': motoristaNome,
+        'empresaNome': empresaNome,
+        'empresaCnpj': empresaCnpj,
         'motoristaCnh': motoristaCnh,
         'cnhCategoria': cnhCategoria,
         'cnhValidade': cnhValidade,
@@ -121,6 +130,8 @@ class ConfigTaxi {
         limiarVelocidadeKmh:
             (json['limiarVelocidadeKmh'] as num?)?.toDouble() ?? ConfigPadrao.limiarVelocidadeKmh,
         motoristaNome: json['motoristaNome'] as String? ?? '',
+        empresaNome: json['empresaNome'] as String? ?? '',
+        empresaCnpj: json['empresaCnpj'] as String? ?? '',
         motoristaCnh: json['motoristaCnh'] as String? ?? '',
         cnhCategoria: json['cnhCategoria'] as String? ?? '',
         cnhValidade: json['cnhValidade'] as String? ?? '',
